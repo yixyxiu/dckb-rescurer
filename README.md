@@ -1,4 +1,4 @@
-# dCKB rescuer v1-interface
+# dCKB rescuer v1 interface
 
 ## Setup
 
@@ -11,17 +11,49 @@
 
 ### Devchain configuration
 
-This is section takes material from both [Nervos devchain guide](https://docs.nervos.org/docs/basics/guides/devchain/) and [Ian instructions](https://talk.nervos.org/t/is-there-any-way-to-speed-up-the-blockchain-in-a-way-that-180-epochs-happen-in-a-reasonable-time-frame-in-the-local-devchain/7163).
+This is section takes material from both [Nervos devchain guide](https://docs.nervos.org/docs/basics/guides/devchain/) and [Ian instructions](https://talk.nervos.org/t/how-to-fork-mainnet-l1-into-a-devnet/7329/5).
 
-From within `~/ckb`:
+From within `~/ckb_dev`:
 
-1. Init devchain:
+1. Copy the `data` directory from an existing ckb mainnet installation to `ckb_dev`.
+
+2. Download the corresponding [chain spec file based on mainnet](https://github.com/nervosnetwork/ckb/blob/develop/resource/specs/mainnet.toml).
+
+3. Initialize dev chain and import mainnet chain spec:
 
 ```bash
-ckb init --chain dev
+ckb init -c dev --import-spec /path/to/downloaded/mainnet.toml --force
 ```
 
-2. In the `ckb.toml` file under the `[block_assembler]` section set:
+4. In the `specs/dev.toml` file change the first line to:
+
+``` toml
+name = "ckb_dev"
+```
+
+5. In the `specs/dev.toml` file under the `[params]` section set:
+
+``` toml
+[params]
+genesis_epoch_length = 1743 # keep genesis_epoch_length the same as original file
+# Other parameters...
+initial_primary_epoch_reward = 1_917_808_21917808
+secondary_epoch_reward = 613_698_63013698
+max_block_cycles = 10_000_000_000
+cellbase_maturity = 0
+primary_epoch_reward_halving_interval = 8760
+epoch_duration_target = 2 # instead of 14400
+permanent_difficulty_in_dummy = true
+```
+
+6. In the `specs/dev.toml` file under the `[pow]` section set:
+
+``` toml
+[pow]
+func = "Dummy"
+```
+
+7. In the `ckb.toml` file under the `[block_assembler]` section set:
 
 ```toml
 [block_assembler]
@@ -31,7 +63,7 @@ hash_type = "type"
 message = "0x"
 ```
 
-3. In the `ckb.toml` file under the `[logger]` section set:
+8. In the `ckb.toml` file under the `[logger]` section set:
 
 ```toml
 [logger]
@@ -39,17 +71,7 @@ filter = "info,ckb-script=debug"# instead of "info"
 # Other parameters...
 ```
 
-4. In the `specs/dev.toml` file under the `[params]` section set:
-
-``` toml
-[params]
-# Other parameters...
-epoch_duration_target = 2 # instead of 14400
-genesis_epoch_length = 2 # instead of 1000
-permanent_difficulty_in_dummy = true
-```
-
-5. In the `ckb-miner.toml` file under the `[[miner.workers]]` section set:
+9. In the `ckb-miner.toml` file under the `[[miner.workers]]` section set:
 
 ``` toml
 [[miner.workers]]
@@ -57,10 +79,16 @@ permanent_difficulty_in_dummy = true
 value = 200 # instead of 5000
 ```
 
-6. In a new terminal start ckb node and miner:
+10. Activate the new spec for the first use by running the following command for a few seconds:
+
+``` bash
+ckb run --skip-spec-check --overwrite-spec
+```
+
+11. In a new terminal start ckb node and miner:
 
 ```bash
-(trap 'kill -INT 0' SIGINT; cd ~/ckb/; ckb run --indexer & sleep 1 && ckb miner)
+(trap 'kill -INT 0' SIGINT; cd ~/ckb_dev/; ./ckb run --indexer & sleep 1 && ./ckb miner)
 ```
 
 ### Configure project with local devchain
@@ -68,13 +96,13 @@ value = 200 # instead of 5000
 1. Download this repo in a folder of your choice:  
 
 ```bash
-git clone https://github.com/ickb/v1-bot.git
+git clone https://github.com/dckb-rescuer/v1-interface.git
 ```
 
 2. Enter into the repo:
 
 ```bash
-cd v1-bot
+cd v1-interface
 ```
 
 3. Install dependencies:
