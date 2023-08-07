@@ -53,10 +53,10 @@ export class TransactionBuilder {
 
             const unlockEpoch = parseEpoch(await this.#withdrawedDaoSince(c));
 
-            console.log(
-                "Epoch diff:", (unlockEpoch.number).sub(currentEpoch.number).toString(),
-                "Fract diff:", (currentEpoch.index.mul(unlockEpoch.length).sub(currentEpoch.index.mul(unlockEpoch.length))).toString()
-            );
+            // console.log(
+            //     "Epoch diff:", (unlockEpoch.number).sub(currentEpoch.number).toString(),
+            //     "Fract diff:", (currentEpoch.index.mul(unlockEpoch.length).sub(currentEpoch.index.mul(unlockEpoch.length))).toString()
+            // );
 
             if (currentEpoch.number.lt(unlockEpoch.number)) {
                 continue;
@@ -131,7 +131,8 @@ export class TransactionBuilder {
         const receipt = {
             cellOutput: {
                 capacity: "0x42",
-                lock: this.#account.lockScript,
+                // lock: this.#account.lockScript,
+                lock: { ...defaultScript("INFO_DAO_LOCK_V2"), args: computeScriptHash(this.#account.lockScript) },
                 type: defaultScript("DAO_INFO")
             },
 

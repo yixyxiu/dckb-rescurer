@@ -17,7 +17,8 @@ async function main() {
     let genesisAccount = randomSecp256k1Account("0xd00c06bfd800d27397002dca6fb0993d5ba6399b4238b2f29ee9deb97593d2bc");
 
     console.log("Creating new test account:");
-    const account = randomSecp256k1Account();
+    // const account = randomSecp256k1Account();
+    const account = randomSecp256k1Account("0x3507a3957681f16395b25a379bf87321c62691b9fe8ede8906ab906a86bb2520");
     console.log(account)
     console.log("✓");
 
@@ -83,8 +84,8 @@ async function withdraw2(account: Account) {
     let transactionBuilder = await buildWithdrawal2();
 
     while (!transactionBuilder.hasWithdrawalPhase2()) {
-        console.log("Waiting 10 seconds...")
-        await new Promise(r => setTimeout(r, 10000));
+        console.log("Waiting 60 seconds...")
+        await new Promise(r => setTimeout(r, 60000));
         transactionBuilder = await buildWithdrawal2();
     }
 
