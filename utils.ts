@@ -2,15 +2,11 @@ import { Account } from "./account";
 import { TransactionBuilder } from "./domain_logic";
 
 import { RPC } from "@ckb-lumos/rpc";
-import { BI, BIish, parseUnit } from "@ckb-lumos/bi"
-import { ScriptConfigs, getConfig, initializeConfig, } from "@ckb-lumos/config-manager/lib";
-import { ckbHash, computeScriptHash } from "@ckb-lumos/base/lib/utils";
-import { Cell, Hexadecimal, OutPoint, Script, Transaction, blockchain } from "@ckb-lumos/base";
-import { readFile, readdir } from "fs/promises";
-import { PathLike } from "fs";
+import { BI, BIish } from "@ckb-lumos/bi"
+import { getConfig, initializeConfig, } from "@ckb-lumos/config-manager/lib";
+import { computeScriptHash } from "@ckb-lumos/base/lib/utils";
+import { Cell, CellDep, OutPoint, Script, Transaction, blockchain } from "@ckb-lumos/base";
 import { Indexer } from "@ckb-lumos/ckb-indexer";
-import { vector } from "@ckb-lumos/codec/lib/molecule";
-
 
 let _nodeUrl: string | undefined;
 
@@ -39,8 +35,6 @@ export function getIndexer() {
 export async function getLiveCell(outPoint: OutPoint) {
     const rpc = getRPC();
     const res = await rpc.getLiveCell(outPoint, true);
-    const blockHash = (await rpc.getTransactionProof([outPoint.txHash])).blockHash;
-    const blockNumber = (await rpc.getBlock(blockHash)).header.number
 
     if (res.status !== "live")
         throw new Error(`Live cell not found at out point: ${outPoint.txHash}-${outPoint.index}`);
@@ -49,8 +43,6 @@ export async function getLiveCell(outPoint: OutPoint) {
         cellOutput: res.cell.output,
         outPoint,
         data: res.cell.data.content,
-        blockHash,
-        blockNumber
     }
 }
 
@@ -75,14 +67,6 @@ export function parseEpoch(epoch: BIish) {
     };
 }
 
-export async function readFileToHexString(filename: PathLike) {
-    const data = await readFile(filename);
-    const dataSize = data.length;
-    const hexString = "0x" + data.toString("hex");
-
-    return { hexString, dataSize };
-}
-
 export function calculateFee(transaction: Transaction, feeRate: BIish): BI {
     const serializedTx = blockchain.Transaction.pack(transaction);
     // 4 is serialized offset bytesize;
@@ -97,36 +81,112 @@ export function calculateFee(transaction: Transaction, feeRate: BIish): BI {
     return fee;
 }
 
-export function defaultScript(name: string): Script {
-    let scriptConfigData = getConfig().SCRIPTS[name];
-    if (!scriptConfigData) {
+export function defaultCellDeps(name: string): CellDep {
+    let configData = getConfig().SCRIPTS[name];
+    if (!configData) {
         throw Error(name + " not found");
     }
 
     return {
-        codeHash: scriptConfigData.CODE_HASH,
-        hashType: scriptConfigData.HASH_TYPE,
-        args: "0x"
+        outPoint: {
+            txHash: configData.TX_HASH,
+            index: configData.INDEX,
+        },
+        depType: configData.DEP_TYPE,
     };
 }
 
-export function ickbSudtScript(): Script {
-    let SUDT = getConfig().SCRIPTS.SUDT!;
-    let ickbDomainLogic = getConfig().SCRIPTS.DOMAIN_LOGIC;
-    if (!ickbDomainLogic) {
+export function defaultScript(name: string): Script {
+    let configData = getConfig().SCRIPTS[name];
+    if (!configData) {
         throw Error(name + " not found");
     }
-    return {
-        codeHash: SUDT.CODE_HASH,
-        hashType: SUDT.HASH_TYPE,
-        args: computeScriptHash(
-            {
-                codeHash: ickbDomainLogic.CODE_HASH,
-                hashType: ickbDomainLogic.HASH_TYPE,
-                args: "0x"
-            }
-        )
+
+    const s: Script = {
+        codeHash: configData.CODE_HASH,
+        hashType: configData.HASH_TYPE,
+        args: "0x"
+    };
+
+    switch (name) {
+        case "TYPE_LOCK":
+            return { ...s, args: "0x010044adfd493be5af2f53688e814c52595f8675097251d3843ef41ecfcab0000c" };
+        case "DAO_INFO":
+            return { ...s, args: "0xe3e93d10fd0bf4bcf8da9dec59a51f083521b3e11a10077614b3b53b933792d6" };
+        case "UDT_OWNER":
+            return { ...s, args: "0xe3e93d10fd0bf4bcf8da9dec59a51f083521b3e11a10077614b3b53b933792d60f000000" };
+        case "SUDT":
+            return { ...s, args: computeScriptHash(defaultScript("UDT_OWNER")) };
+        default:
+            return s;
     }
+}
+
+export function initConfig() {
+    initializeConfig({
+        PREFIX: "ckt",
+        SCRIPTS: {
+            DAO: {
+                CODE_HASH: "0x82d76d1b75fe2fd9a27dfbaa65a039221a380d76c926f378d3f81cf3e7e13f2e",
+                HASH_TYPE: "type",
+                TX_HASH: "0xe2fb199810d49a4d8beec56718ba2593b665db9d52299a0f9e6e75416d73ff5c",
+                INDEX: "0x2",
+                DEP_TYPE: "code"
+            },
+            SECP256K1_BLAKE160: {
+                CODE_HASH: "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8",
+                HASH_TYPE: "type",
+                TX_HASH: "0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c",
+                INDEX: "0x0",
+                DEP_TYPE: "depGroup"
+            },
+            PWLOCK_K1_ACPL: {
+                CODE_HASH: "0xbf43c3602455798c1a61a596e0d95278864c552fafe231c063b3fabf97a8febc",
+                HASH_TYPE: "type",
+                TX_HASH: "0x1d60cb8f4666e039f418ea94730b1a8c5aa0bf2f7781474406387462924d15d4",
+                INDEX: "0x0",
+                DEP_TYPE: "code"
+            },
+            SUDT: {
+                CODE_HASH: "0x5e7a36a77e68eecc013dfa2fe6a23f3b6c344b04005808694ae6dd45eea4cfd5",
+                HASH_TYPE: "type",
+                TX_HASH: "0xc7813f6a415144643970c2e88e0bb6ca6a8edc5dd7c1022746f628284a9936d5",
+                INDEX: "0x0",
+                DEP_TYPE: "code"
+            },
+            TYPE_LOCK: {
+                CODE_HASH: "0x8baa01f58baab0cb58fc319136ea4f6866ed59c323fa94bf7d6b72bea21c74de",
+                HASH_TYPE: "data",
+                TX_HASH: "0x584ddf4379ae4fc87a435162c77faf9bbd55e5704f7ffbdcfa5052ed81f6770f",
+                INDEX: "0x4",
+                DEP_TYPE: "code"
+            },
+            UDT_OWNER: {
+                CODE_HASH: "0x29a81473e24924e394a9148ab357c2492fedf65241848b7a87539a7db9c3d43f",
+                HASH_TYPE: "data",
+                TX_HASH: "0x584ddf4379ae4fc87a435162c77faf9bbd55e5704f7ffbdcfa5052ed81f6770f",
+                INDEX: "0x6",
+                DEP_TYPE: "code"
+            },
+            DAO_INFO: {
+                CODE_HASH: "0x6fb198a4ef2cc0fa63c2ef7596c169452323d8ce678bdb3f75c77dc1eac2f47f",
+                HASH_TYPE: "data",
+                TX_HASH: "0x584ddf4379ae4fc87a435162c77faf9bbd55e5704f7ffbdcfa5052ed81f6770f",
+                INDEX: "0x9",
+                DEP_TYPE: "code"
+            },
+            INFO_DAO_LOCK_V2: {
+                CODE_HASH: "0xe21a856d64d311b2df0a4ecb7dcc66ebebccf5bb623a3031d26bb2455a30a72e",
+                HASH_TYPE: "data",
+                TX_HASH: "0x91de2edac573fe2b87c4cf081125466e81702c609c5400f3274cba68dda7a58f",
+                INDEX: "0x0",
+                DEP_TYPE: "code"
+            },
+        }
+    });
+
+    // console.log("Config initialized to:");
+    // console.log(getConfig());
 }
 
 export async function transferFrom(from: Account, to: Account, amount: BI) {
@@ -138,148 +198,6 @@ export async function transferFrom(from: Account, to: Account, amount: BI) {
         },
         data: "0x"
     }
-    const { txHash } = await (await new TransactionBuilder(from).fund()).add("output", "start", cell).buildAndSend();
+    const { txHash } = await (await new TransactionBuilder(from).fund()).add("output", "end", cell).buildAndSend();
     return txHash;
-}
-
-const BINARIES_FILEPATH = "./files/";
-
-async function getLocalScriptNames() {
-    return (await readdir(BINARIES_FILEPATH)).sort();
-}
-
-async function getGenesisBlock() {
-    return getRPC().getBlockByNumber("0x0");
-}
-
-export async function deployCode(account: Account) {
-    const cells: Cell[] = [];
-    for (const scriptName of await getLocalScriptNames()) {
-        const { hexString: hexString1, dataSize: dataSize1 } = await readFileToHexString(BINARIES_FILEPATH + scriptName);
-        const output1: Cell = {
-            cellOutput: {
-                capacity: parseUnit((41 + dataSize1).toString(), "ckb").toHexString(),
-                lock: defaultScript("SECP256K1_BLAKE160"),///////////////////////////////////////////////
-                type: undefined
-            },
-            data: hexString1
-        };
-        cells.push(output1);
-    }
-
-    const { txHash } = await (await new TransactionBuilder(account).fund()).add("output", "start", ...cells).buildAndSend();
-
-    const name2PartialScriptConfig: { [id: string]: PartialScriptConfig | undefined } = {};
-    for (const scriptName of await getLocalScriptNames()) {
-        name2PartialScriptConfig[scriptName.toUpperCase()] = {
-            TX_HASH: txHash,
-            INDEX: BI.from(Object.getOwnPropertyNames(name2PartialScriptConfig).length).toHexString(),
-            DEP_TYPE: "code",
-        };
-    }
-    await setConfig(name2PartialScriptConfig);
-
-    return txHash;
-}
-
-export async function createDepGroup(account: Account) {
-    const genesisBlock = await getGenesisBlock();
-    const localScriptNames = await getLocalScriptNames();
-    const config = getConfig();
-    const outPoints: OutPoint[] = [
-        ...Array.from(
-            { length: 3 },//SECP256K1_BLAKE160_SIGHASH_ALL, DAO, SECP256K1_DATA
-            (_, i) => {
-                return {
-                    txHash: genesisBlock.transactions[0].hash!,
-                    index: BI.from(i + 1).toHexString(),
-                }
-            },
-        ),
-        ...Array.from(
-            { length: localScriptNames.length },
-            (_, i) => {
-                const scriptConfig = config.SCRIPTS[localScriptNames[i].toUpperCase()]!;
-                return {
-                    txHash: scriptConfig.TX_HASH,
-                    index: scriptConfig.INDEX
-                }
-            },
-        ),
-    ];
-
-    let packedOutPoints = vector(blockchain.OutPoint).pack(outPoints);
-    let hexOutPoints = "0x" + Buffer.from(packedOutPoints).toString('hex');
-    const cell: Cell = {
-        cellOutput: {
-            capacity: parseUnit((41 + hexOutPoints.length / 2 - 1).toString(), "ckb").toHexString(),
-            lock: defaultScript("SECP256K1_BLAKE160"),
-            type: undefined
-        },
-        data: hexOutPoints
-    };
-
-    const { txHash } = await (await new TransactionBuilder(account).fund()).add("output", "start", cell).buildAndSend();
-
-    const name2PartialScriptConfig: { [id: string]: PartialScriptConfig | undefined } = {};
-    for (const scriptName of Object.getOwnPropertyNames(config.SCRIPTS)) {
-        name2PartialScriptConfig[scriptName] = {
-            TX_HASH: txHash,
-            INDEX: BI.from(0).toHexString(),
-            DEP_TYPE: "depGroup",
-        };
-    }
-    await setConfig(name2PartialScriptConfig);
-
-    return txHash;
-}
-
-interface PartialScriptConfig {
-    TX_HASH: Hexadecimal
-    INDEX: Hexadecimal
-    DEP_TYPE: "depGroup" | "code"
-};
-
-export async function setConfig(name2PartialScriptConfig: {
-    [id: string]: PartialScriptConfig | undefined
-} = {}) {
-    const genesisBlock = await getGenesisBlock();
-
-    const scriptConfigs: ScriptConfigs = {
-        SECP256K1_BLAKE160: {
-            CODE_HASH: "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8",
-            HASH_TYPE: "type",
-            TX_HASH: genesisBlock.transactions[1].hash!,
-            INDEX: "0x0",
-            DEP_TYPE: "depGroup",
-            ...name2PartialScriptConfig["SECP256K1_BLAKE160"],
-        },
-        DAO: {
-            CODE_HASH: "0x82d76d1b75fe2fd9a27dfbaa65a039221a380d76c926f378d3f81cf3e7e13f2e",
-            HASH_TYPE: "type",
-            TX_HASH: genesisBlock.transactions[0].hash!,
-            INDEX: "0x2",
-            DEP_TYPE: "code",
-            ...name2PartialScriptConfig["DAO"],
-        }
-    }
-
-    for (const scriptName of await getLocalScriptNames()) {
-        scriptConfigs[scriptName.toUpperCase()] = {
-            CODE_HASH: ckbHash(await readFile(BINARIES_FILEPATH + scriptName)),
-            HASH_TYPE: scriptName == "sudt" ? "data" : "data1",
-            TX_HASH: genesisBlock.transactions[0].hash!,//Dummy value
-            INDEX: "0x42",//Dummy value
-            DEP_TYPE: "code",
-            ...name2PartialScriptConfig[scriptName.toUpperCase()],
-        };
-    }
-
-    initializeConfig({
-        PREFIX: "ckt",
-        SCRIPTS: scriptConfigs
-    });
-
-    // console.log("Config initialized to:");
-    // console.log(getConfig());
 }
