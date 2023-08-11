@@ -6,32 +6,50 @@
 
 0. Install `Git`
 1. Install `Node.js 16 LTS`
-2. Download latest [`ckb (Portable)`](https://github.com/nervosnetwork/ckb/releases/latest), tested with `ckb 0.109.0`
-3. Extract the `ckb` compressed folder and renamed it to `~/ckb`
+2. Create `ckb_dev` folder and move the compiled node [`ckb#4097`](https://github.com/nervosnetwork/ckb/pull/4097) in it:
+
+```bash
+mkdir ~/ckb_dev &&
+cd ~/ckb_dev &&
+git clone https://github.com/nervosnetwork/ckb.git &&
+mv ckb ckb_tmp &&
+cd ckb_tmp &&
+git fetch origin pull/4097/head &&
+git checkout -b pullrequest FETCH_HEAD &&
+make prod_portable &&
+mv ./target/prod/ckb ~/ckb_dev &&
+cd .. &&
+rm -fr ckb_tmp
+```
 
 ### Devchain configuration
 
 This is section takes material from both [Nervos devchain guide](https://docs.nervos.org/docs/basics/guides/devchain/) and [Ian instructions](https://talk.nervos.org/t/how-to-fork-mainnet-l1-into-a-devnet/7329/5).
 
-From within `~/ckb_dev`:
-
-1. Copy the `data` directory from an existing ckb mainnet installation to `ckb_dev`.
-
-2. Download the corresponding [chain spec file based on mainnet](https://github.com/nervosnetwork/ckb/blob/develop/resource/specs/mainnet.toml).
-
-3. Initialize dev chain and import mainnet chain spec:
+1. Copy the `data` directory from an existing ckb mainnet installation to `ckb_dev`:
 
 ```bash
-ckb init -c dev --import-spec /path/to/downloaded/mainnet.toml --force
+cd ~/ckb_dev &&
+cp -r ~/.config/Neuron/chains/mainnet/data .
 ```
 
-4. In the `specs/dev.toml` file change the first line to:
+2. Download the corresponding [mainnet spec](https://github.com/nervosnetwork/ckb/blob/develop/resource/specs/mainnet.toml) and force import it into a devnet spec:
+
+```bash
+cd ~/ckb_dev &&
+wget https://raw.githubusercontent.com/nervosnetwork/ckb/develop/resource/specs/mainnet.toml &&
+mv mainnet.toml mainnet_tmp.toml &&
+./ckb init -c dev --import-spec mainnet_tmp.toml --force &&
+rm mainnet_tmp.toml
+```
+
+3. In the `specs/dev.toml` file change the first line to:
 
 ``` toml
 name = "ckb_dev"
 ```
 
-5. In the `specs/dev.toml` file under the `[params]` section set:
+4. In the `specs/dev.toml` file under the `[params]` section set:
 
 ``` toml
 [params]
@@ -46,11 +64,19 @@ epoch_duration_target = 2 # instead of 14400
 permanent_difficulty_in_dummy = true
 ```
 
-6. In the `specs/dev.toml` file under the `[pow]` section set:
+5. In the `specs/dev.toml` file under the `[pow]` section set:
 
 ``` toml
 [pow]
 func = "Dummy"
+```
+
+6. In the `ckb.toml` file under the `[logger]` section set:
+
+```toml
+[logger]
+filter = "ckb-script=debug"# instead of "info"
+# Other parameters...
 ```
 
 7. In the `ckb.toml` file under the `[block_assembler]` section set:
@@ -63,12 +89,12 @@ hash_type = "type"
 message = "0x"
 ```
 
-8. In the `ckb.toml` file under the `[logger]` section set:
+8. In the `ckb-miner.toml` file under the `[miner.client]` section set:
 
-```toml
-[logger]
-filter = "info,ckb-script=debug"# instead of "info"
+``` toml
+[miner.client]
 # Other parameters...
+poll_interval = 100 # instead of 1000
 ```
 
 9. In the `ckb-miner.toml` file under the `[[miner.workers]]` section set:
@@ -79,16 +105,10 @@ filter = "info,ckb-script=debug"# instead of "info"
 value = 200 # instead of 5000
 ```
 
-10. Activate the new spec for the first use by running the following command for a few seconds:
-
-``` bash
-ckb run --skip-spec-check --overwrite-spec
-```
-
-11. In a new terminal start ckb node and miner:
+10. In a new terminal start ckb node and miner:
 
 ```bash
-(trap 'kill -INT 0' SIGINT; cd ~/ckb_dev/; ./ckb run --indexer & sleep 1 && ./ckb miner)
+(trap 'kill -INT 0' SIGINT; cd ~/ckb_dev/; ./ckb run --skip-spec-check --overwrite-spec --indexer & sleep 5 && ./ckb miner)
 ```
 
 ### Configure project with local devchain
