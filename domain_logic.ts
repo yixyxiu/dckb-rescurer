@@ -1,22 +1,25 @@
+import {
+    calculateFee, defaultCellDeps, defaultScript, getIndexer,
+    getNodeUrl, getRPC, parseEpoch, scriptEq
+} from "./utils";
 
-import { Account } from "./account";
-import { calculateFee, defaultCellDeps, defaultScript, getIndexer, getNodeUrl, getRPC, parseEpoch, scriptEq } from "./utils";
-import { secp256k1Blake160 } from "@ckb-lumos/common-scripts";
 import { RPC } from "@ckb-lumos/rpc";
 import { BI, parseUnit } from "@ckb-lumos/bi"
-import { TransactionSkeleton, TransactionSkeletonType, minimalCellCapacityCompatible, sealTransaction } from "@ckb-lumos/helpers";
-import { key } from "@ckb-lumos/hd";
+import { TransactionSkeleton, TransactionSkeletonType, minimalCellCapacityCompatible } from "@ckb-lumos/helpers";
 import { computeScriptHash } from "@ckb-lumos/base/lib/utils";
 import { bytes } from "@ckb-lumos/codec";
-import { Cell, Header, Hexadecimal, Transaction, WitnessArgs, blockchain } from "@ckb-lumos/base";
+import { Cell, Header, Hexadecimal, Script, Transaction, WitnessArgs, blockchain } from "@ckb-lumos/base";
 import { CellCollector, Indexer } from "@ckb-lumos/ckb-indexer";
 import { CKBIndexerQueryOptions } from "@ckb-lumos/ckb-indexer/lib/type";
 import { calculateDaoEarliestSinceCompatible, calculateMaximumWithdrawCompatible } from "@ckb-lumos/common-scripts/lib/dao";
 import { Uint128LE, Uint64LE } from "@ckb-lumos/codec/lib/number/uint";
 import { hexify } from "@ckb-lumos/codec/lib/bytes";
 
+type signerType = (tx: TransactionSkeletonType) => Promise<Transaction>;
+
 export class TransactionBuilder {
-    #account: Account;
+    #accountLock: Script;
+    #signer: signerType
 
     #indexer: Indexer;
     #rpc: RPC;
@@ -26,8 +29,9 @@ export class TransactionBuilder {
     #inputs: Cell[];
     #outputs: Cell[];
 
-    constructor(account: Account) {
-        this.#account = account;
+    constructor(accountLock: Script, signer: signerType) {
+        this.#accountLock = accountLock;
+        this.#signer = signer;
 
         this.#indexer = getIndexer();
         this.#rpc = getRPC();
@@ -79,7 +83,7 @@ export class TransactionBuilder {
         const collector = new CellCollector(this.#indexer, {
             scriptSearchMode: "exact",
             withData: true,
-            lock: this.#account.lockScript,
+            lock: this.#accountLock,
             ...query
         }, {
             withBlockHash: true,
@@ -131,8 +135,8 @@ export class TransactionBuilder {
         const receipt = {
             cellOutput: {
                 capacity: "0x42",
-                // lock: this.#account.lockScript,
-                lock: { ...defaultScript("INFO_DAO_LOCK_V2"), args: computeScriptHash(this.#account.lockScript) },
+                // lock: this.#accountLock,
+                lock: { ...defaultScript("INFO_DAO_LOCK_V2"), args: computeScriptHash(this.#accountLock) },
                 type: defaultScript("DAO_INFO")
             },
 
@@ -154,7 +158,7 @@ export class TransactionBuilder {
         const withdrawal = {
             cellOutput: {
                 capacity: deposit.cellOutput.capacity,
-                lock: this.#account.lockScript,
+                lock: this.#accountLock,
                 type: defaultScript("DAO")
             },
             data: hexify(Uint64LE.pack(BI.from(deposit.blockNumber)))
@@ -200,7 +204,7 @@ export class TransactionBuilder {
             changeCells.push({
                 cellOutput: {
                     capacity: ckbDelta.toHexString(),
-                    lock: this.#account.lockScript,
+                    lock: this.#accountLock,
                     type: undefined,
                 },
                 data: "0x"
@@ -209,7 +213,7 @@ export class TransactionBuilder {
             changeCells.push({
                 cellOutput: {
                     capacity: ckbDelta.toHexString(),
-                    lock: this.#account.lockScript,
+                    lock: this.#accountLock,
                     type: defaultScript("SUDT")
                 },
                 data: hexify(Uint128LE.pack(dckbDelta))
@@ -228,9 +232,9 @@ export class TransactionBuilder {
 
         transaction = await addInputSinces(transaction, async (c: Cell) => this.#withdrawedDaoSince(c));
 
-        transaction = await addWitnessPlaceholders(transaction, async (blockNumber: string) => this.#getBlockHash(blockNumber));
+        transaction = await addWitnessPlaceholders(transaction, this.#accountLock, async (blockNumber: string) => this.#getBlockHash(blockNumber));
 
-        const signedTransaction = signTransaction(transaction, this.#account.privKey);
+        const signedTransaction = await this.#signer(transaction);
 
         return { transaction, signedTransaction };
     }
@@ -352,7 +356,7 @@ function addCellDeps(transaction: TransactionSkeletonType) {
         cellDeps.push(
             defaultCellDeps("DAO"),
             defaultCellDeps("SECP256K1_BLAKE160"),
-            defaultCellDeps("PWLOCK_K1_ACPL"),
+            defaultCellDeps("PW_LOCK"),
             defaultCellDeps("SUDT"),
             defaultCellDeps("TYPE_LOCK"),
             defaultCellDeps("UDT_OWNER"),
@@ -435,13 +439,12 @@ async function addInputSinces(transaction: TransactionSkeletonType, withdrawedDa
     return transaction;
 }
 
-async function addWitnessPlaceholders(transaction: TransactionSkeletonType, blockNumber2BlockHash: (h: Hexadecimal) => Promise<Hexadecimal>) {
+async function addWitnessPlaceholders(transaction: TransactionSkeletonType, accountLock: Script, blockNumber2BlockHash: (h: Hexadecimal) => Promise<Hexadecimal>) {
     if (transaction.witnesses.size !== 0) {
         throw new Error("This function can only be used on an empty witnesses structure.");
     }
 
     const daoType = defaultScript("DAO");
-    const secp256k1Blake160Lock = defaultScript("SECP256K1_BLAKE160");
     const uniqueLocks: Set<string> = new Set();
     for (const c of transaction.inputs) {
         const witnessArgs: WitnessArgs = { lock: "0x" };
@@ -450,9 +453,8 @@ async function addWitnessPlaceholders(transaction: TransactionSkeletonType, bloc
         if (!uniqueLocks.has(lockHash)) {
             uniqueLocks.add(lockHash);
 
-            if (c.cellOutput.lock.codeHash == secp256k1Blake160Lock.codeHash &&
-                c.cellOutput.lock.hashType == secp256k1Blake160Lock.hashType) {
-                witnessArgs.lock = "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+            if (scriptEq(c.cellOutput.lock, accountLock)) {
+                witnessArgs.lock = "0x" + "00".repeat(65);
             }
         }
 
@@ -472,14 +474,7 @@ async function addWitnessPlaceholders(transaction: TransactionSkeletonType, bloc
     return transaction;
 }
 
-function signTransaction(transaction: TransactionSkeletonType, PRIVATE_KEY: string) {
-    transaction = secp256k1Blake160.prepareSigningEntries(transaction);
-    const message = transaction.get("signingEntries").get(0)?.message;
-    const Sig = key.signRecoverable(message!, PRIVATE_KEY);
-    const tx = sealTransaction(transaction, [Sig]);
 
-    return tx;
-}
 
 async function sendTransaction(signedTransaction: Transaction, rpc: RPC) {
     //Send the transaction
