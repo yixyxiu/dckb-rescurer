@@ -43,14 +43,16 @@ export async function signTransaction(transaction: TransactionSkeletonType) {
     if (v >= 27) v -= 27;
     signedMessage = "0x" + signedMessage.slice(2, -2) + v.toString(16).padStart(2, "0");
 
-    const signedWitness = bytes.hexify(
+    const index = transaction.inputs.findIndex((c) => scriptEq(c.cellOutput.lock, accountLock));
+    const unpackedWitness = blockchain.WitnessArgs.unpack(transaction.witnesses.get(0)!)
+    const packedWitness = bytes.hexify(
         blockchain.WitnessArgs.pack({
-            lock: signedMessage,
+            ...unpackedWitness,
+            lock: signedMessage
         })
     );
 
-    const index = transaction.inputs.findIndex((c) => scriptEq(c.cellOutput.lock, accountLock))
-    transaction = transaction.update("witnesses", (witnesses) => witnesses.set(index, signedWitness));
+    transaction = transaction.update("witnesses", (witnesses) => witnesses.set(index, packedWitness));
 
     return createTransactionFromSkeleton(transaction);
 }

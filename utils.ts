@@ -5,6 +5,7 @@ import { computeScriptHash } from "@ckb-lumos/base/lib/utils";
 import { Cell, CellDep, OutPoint, Script, Transaction, blockchain } from "@ckb-lumos/base";
 import { Indexer } from "@ckb-lumos/ckb-indexer";
 import { ethereum } from "./pw_lock_signer";
+import { TransactionSkeletonType, createTransactionFromSkeleton } from "@ckb-lumos/helpers";
 
 initializeConfig({
     PREFIX: "ckt",
@@ -143,8 +144,8 @@ export function parseEpoch(epoch: BIish) {
     };
 }
 
-export function calculateFee(transaction: Transaction, feeRate: BIish): BI {
-    const serializedTx = blockchain.Transaction.pack(transaction);
+export function calculateFee(transaction: TransactionSkeletonType, feeRate: BIish): BI {
+    const serializedTx = blockchain.Transaction.pack(createTransactionFromSkeleton(transaction));
     // 4 is serialized offset bytesize;
     const size = serializedTx.byteLength + 4;
 

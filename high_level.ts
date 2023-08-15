@@ -9,10 +9,10 @@ export async function deposit() {
     const accountLock = defaultScript("PW_LOCK")
     const depositAmount = parseUnit("10000", "ckb");
     const { txHash } = await (await (await new TransactionBuilder(accountLock, signTransaction).fund()).deposit(depositAmount)).buildAndSend();
-    return txHash;
+    console.log("Deposit TxHash:", txHash);
 }
 
-export async function withdraw1() {
+export async function withdrawalRequest() {
     const accountLock = defaultScript("PW_LOCK");
 
     const indexer = getIndexer();
@@ -35,23 +35,49 @@ export async function withdraw1() {
             deposit.blockHash = receipt.blockHash;
             deposit.blockNumber = receipt.blockNumber;
 
-            const { txHash } = await (await new TransactionBuilder(accountLock, signTransaction).fund()).withdrawFrom(deposit, receipt).buildAndSend();
-            return txHash
+            if (deposit.data !== "0x0000000000000000") {
+                continue;
+            }
+
+            const { txHash } = await (await new TransactionBuilder(accountLock, signTransaction).fund())
+                .withdrawFrom(deposit, receipt).buildAndSend();
+
+            console.log("Withdrawal Request TxHash:", txHash);
+            return;
         }
     }
 
     throw Error("Deposit not found");
 }
 
-export async function withdraw2() {
+export async function withdraw() {
     const accountLock = defaultScript("PW_LOCK");
 
-    const transactionBuilder = await new TransactionBuilder(accountLock, signTransaction).fund();
+    const indexer = getIndexer();
+    await indexer.waitForSync();
 
-    if (!transactionBuilder.hasWithdrawalPhase2()) {
-        throw Error("No mature withdrawal request")
+    const collector = new CellCollector(indexer, {
+        scriptSearchMode: "exact",
+        withData: true,
+        lock: accountLock,
+        type: defaultScript("DAO"),
+    }, {
+        withBlockHash: true,
+        ckbRpcUrl: getNodeUrl()
+    });
+
+    for await (const withdrawalRequest of collector.collect()) {
+        if (withdrawalRequest.data === "0x0000000000000000") {
+            continue;
+        }
+
+        const { txHash } = await new TransactionBuilder(accountLock, signTransaction)
+            .add("input", "start", withdrawalRequest).buildAndSend();
+
+        console.log("Withdrawal TxHash:", txHash);
+        return;
     }
 
-    const { txHash } = await transactionBuilder.buildAndSend();
-    return txHash;
+
+    throw Error("Withdrawal request not found");
 }

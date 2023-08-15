@@ -3,14 +3,14 @@ import useSWR from "swr";
 import { ethereum } from "./pw_lock_signer";
 import { defaultScript } from "./utils";
 import { encodeToAddress } from "@ckb-lumos/helpers";
-import { deposit, withdraw1, withdraw2 } from "./high_level";
+import { deposit, withdrawalRequest, withdraw } from "./high_level";
 
 export function App() {
     const { data: lock, error, isLoading, mutate } = useSWR(
-        '/selectedAddress', async () => ethereum.enable().then(() => defaultScript("PW_LOCK"))
+        '/accountLock', async () => ethereum.enable().then(() => defaultScript("PW_LOCK"))
     );
 
-    if (!ethereum) return <div>MetaMask is not installed</div>;
+    if (!ethereum) return <div>MetaMask doesn't seem to be installed</div>;
 
     if (isLoading || error || lock === undefined) return (
         <button onClick={mutate} disabled={error ? true : false}>
@@ -22,6 +22,7 @@ export function App() {
 
     return (
         <>
+            <h1>dCKB Rescuer</h1>
             <h2>Account information</h2>
             <ul>
                 <li>Nervos Address(PW): {address}</li>
@@ -33,8 +34,8 @@ export function App() {
             <h2>Actions</h2>
             <ul>
                 <li><button onClick={deposit}>Deposit</button></li>
-                <li><button onClick={withdraw1}>Withdraw1</button></li>
-                <li><button onClick={withdraw2}>Withdraw2</button></li>
+                <li><button onClick={withdrawalRequest}>Request Withdrawal</button></li>
+                <li><button onClick={withdraw}>Withdraw</button></li>
             </ul>
         </>
     );

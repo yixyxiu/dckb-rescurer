@@ -1,6 +1,6 @@
 import {
     calculateFee, defaultCellDeps, defaultScript, getIndexer,
-    getNodeUrl, getRPC, parseEpoch, scriptEq
+    getNodeUrl, getRPC, scriptEq
 } from "./utils";
 
 import { RPC } from "@ckb-lumos/rpc";
@@ -47,32 +47,6 @@ export class TransactionBuilder {
         const capacityCells = await this.#collect({ type: "empty", withData: false });
         const sudtCells = await this.#collect({ type: defaultScript("SUDT") });
         this.add("input", "end", ...capacityCells, ...sudtCells);
-
-        const unlockableWithdrawedDaoCells: Cell[] = [];
-        const currentEpoch = parseEpoch((await this.#rpc.getTipHeader()).epoch);
-        for (const c of await this.#collect({ type: defaultScript("DAO") })) {
-            if (c.data === "0x0000000000000000") {
-                continue;
-            }
-
-            const unlockEpoch = parseEpoch(await this.#withdrawedDaoSince(c));
-
-            // console.log(
-            //     "Epoch diff:", (unlockEpoch.number).sub(currentEpoch.number).toString(),
-            //     "Fract diff:", (currentEpoch.index.mul(unlockEpoch.length).sub(currentEpoch.index.mul(unlockEpoch.length))).toString()
-            // );
-
-            if (currentEpoch.number.lt(unlockEpoch.number)) {
-                continue;
-            }
-
-            if (currentEpoch.index.mul(unlockEpoch.length).lt(currentEpoch.index.mul(unlockEpoch.length))) {
-                continue;
-            }
-
-            unlockableWithdrawedDaoCells.push(c);
-        }
-        this.add("input", "end", ...unlockableWithdrawedDaoCells);
 
         return this;
     }
@@ -170,24 +144,14 @@ export class TransactionBuilder {
             .add("output", "start", withdrawal);
     }
 
-    hasWithdrawalPhase2() {
-        const daoType = defaultScript("DAO");
-
-        for (const c of this.#inputs) {
-            //Second Withdrawal step from NervosDAO
-            if (scriptEq(c.cellOutput.type, daoType) && c.data !== "0x0000000000000000") {
-                return true;
-            }
-        }
-
-        return false
-    }
-
     async buildAndSend(feeRate: BI = BI.from(1000)) {
         const ckbDelta = await this.getCkbDelta();
-        const fee = calculateFee((await this.#buildWithChange(ckbDelta)).signedTransaction, feeRate);
 
-        const { transaction, signedTransaction } = await this.#buildWithChange(ckbDelta.sub(fee));
+        const fee = calculateFee(await this.#buildWithChange(ckbDelta), feeRate);
+
+        const transaction = await this.#buildWithChange(ckbDelta.sub(fee));
+
+        const signedTransaction = await this.#signer(transaction);
 
         const txHash = await sendTransaction(signedTransaction, this.#rpc);
 
@@ -234,9 +198,7 @@ export class TransactionBuilder {
 
         transaction = await addWitnessPlaceholders(transaction, this.#accountLock, async (blockNumber: string) => this.#getBlockHash(blockNumber));
 
-        const signedTransaction = await this.#signer(transaction);
-
-        return { transaction, signedTransaction };
+        return transaction;
     }
 
     async getCkbDelta() {
@@ -445,17 +407,11 @@ async function addWitnessPlaceholders(transaction: TransactionSkeletonType, acco
     }
 
     const daoType = defaultScript("DAO");
-    const uniqueLocks: Set<string> = new Set();
     for (const c of transaction.inputs) {
         const witnessArgs: WitnessArgs = { lock: "0x" };
 
-        const lockHash = computeScriptHash(c.cellOutput.lock);
-        if (!uniqueLocks.has(lockHash)) {
-            uniqueLocks.add(lockHash);
-
-            if (scriptEq(c.cellOutput.lock, accountLock)) {
-                witnessArgs.lock = "0x" + "00".repeat(65);
-            }
+        if (scriptEq(c.cellOutput.lock, accountLock)) {
+            witnessArgs.lock = "0x" + "00".repeat(65);
         }
 
         if (scriptEq(c.cellOutput.type, daoType) && c.data !== "0x0000000000000000") {
