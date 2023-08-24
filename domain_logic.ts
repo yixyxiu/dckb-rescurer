@@ -1,16 +1,10 @@
-import {
-    calculateFee, defaultCellDeps, defaultScript, getIndexer,
-    getNodeUrl, getRPC, scriptEq
-} from "./utils";
+import { calculateFee, defaultCellDeps, defaultScript, getRPC, scriptEq } from "./utils";
 
 import { RPC } from "@ckb-lumos/rpc";
 import { BI, parseUnit } from "@ckb-lumos/bi"
-import { TransactionSkeleton, TransactionSkeletonType, minimalCellCapacityCompatible } from "@ckb-lumos/helpers";
-import { computeScriptHash } from "@ckb-lumos/base/lib/utils";
+import { TransactionSkeleton, TransactionSkeletonType } from "@ckb-lumos/helpers";
 import { bytes } from "@ckb-lumos/codec";
 import { Cell, Header, Hexadecimal, Script, Transaction, WitnessArgs, blockchain } from "@ckb-lumos/base";
-import { CellCollector, Indexer } from "@ckb-lumos/ckb-indexer";
-import { CKBIndexerQueryOptions } from "@ckb-lumos/ckb-indexer/lib/type";
 import { calculateDaoEarliestSinceCompatible, calculateMaximumWithdrawCompatible } from "@ckb-lumos/common-scripts/lib/dao";
 import { Uint128LE, Uint64LE } from "@ckb-lumos/codec/lib/number/uint";
 import { hexify } from "@ckb-lumos/codec/lib/bytes";
@@ -21,54 +15,28 @@ export class TransactionBuilder {
     #accountLock: Script;
     #signer: signerType
 
-    #indexer: Indexer;
-    #rpc: RPC;
     #blockNumber2BlockHash: { [id: Hexadecimal]: Hexadecimal; };
     #blockHash2Header: { [id: Hexadecimal]: Header; };
 
     #inputs: Cell[];
     #outputs: Cell[];
 
-    constructor(accountLock: Script, signer: signerType) {
+    constructor(
+        accountLock: Script,
+        signer: signerType,
+        blockNumber2BlockHashCache: { [id: Hexadecimal]: Hexadecimal; } = {},
+        blockHash2HeaderCache: { [id: Hexadecimal]: Header; } = {}
+    ) {
         this.#accountLock = accountLock;
         this.#signer = signer;
 
-        this.#indexer = getIndexer();
-        this.#rpc = getRPC();
-
-        this.#blockNumber2BlockHash = {};
-        this.#blockHash2Header = {};
+        this.#blockNumber2BlockHash = blockNumber2BlockHashCache;
+        this.#blockHash2Header = blockHash2HeaderCache;
 
         this.#inputs = [];
         this.#outputs = [];
     }
 
-    async fund() {
-        const capacityCells = await this.#collect({ type: "empty", withData: false });
-        const sudtCells = await this.#collect({ type: defaultScript("SUDT") });
-        this.add("input", "end", ...capacityCells, ...sudtCells);
-
-        return this;
-    }
-
-    async #collect(query: CKBIndexerQueryOptions) {
-        await this.#indexer.waitForSync();
-        let result: Cell[] = [];
-        const collector = new CellCollector(this.#indexer, {
-            scriptSearchMode: "exact",
-            withData: true,
-            lock: this.#accountLock,
-            ...query
-        }, {
-            withBlockHash: true,
-            ckbRpcUrl: getNodeUrl()
-        });
-        for await (const cell of collector.collect()) {
-            result.push(cell);
-        }
-
-        return result;
-    }
 
     add(source: "input" | "output", position: "start" | "end", ...cells: Cell[]) {
         if (source === "input") {
@@ -78,8 +46,8 @@ export class TransactionBuilder {
                 this.#inputs.push(...cells);
             }
 
-            if (this.#inputs.some((c) => !c.blockHash || !c.blockNumber)) {
-                throw Error("All input cells must have both blockHash and blockNumber populated");
+            if (this.#inputs.some((c) => !c.blockNumber)) {
+                throw Error("All input cells must have blockNumber populated");
             }
         } else {
             if (position === "start") {
@@ -92,58 +60,6 @@ export class TransactionBuilder {
         return this;
     }
 
-    async deposit(depositAmount: BI) {
-        const deposit = {
-            cellOutput: {
-                capacity: depositAmount.toHexString(),
-                lock: defaultScript("TYPE_LOCK"),
-                type: defaultScript("DAO"),
-            },
-            data: hexify(Uint64LE.pack(0))
-        };
-
-        if (depositAmount.lt(minimalCellCapacityCompatible(deposit))) {
-            throw Error(`depositAmount is ${depositAmount}, but should be more than ${minimalCellCapacityCompatible(deposit)}`);
-        }
-
-        const receipt = {
-            cellOutput: {
-                capacity: "0x42",
-                // lock: this.#accountLock,
-                lock: { ...defaultScript("INFO_DAO_LOCK_V2"), args: computeScriptHash(this.#accountLock) },
-                type: defaultScript("DAO_INFO")
-            },
-
-            data: hexify(Uint128LE.pack(depositAmount))
-        };
-
-        receipt.cellOutput.capacity = minimalCellCapacityCompatible(receipt).toHexString();
-
-        const publicOwnerLockCell = (await this.#collect({ lock: defaultScript("UDT_OWNER"), type: "empty", withData: false }))[0];
-        const clonedPublicOwnerLockCell: Cell = JSON.parse(JSON.stringify(publicOwnerLockCell));
-
-        return this.add("output", "start", receipt)
-            .add("output", "start", deposit)
-            .add("input", "end", publicOwnerLockCell)
-            .add("output", "end", clonedPublicOwnerLockCell);
-    }
-
-    withdrawFrom(deposit: Cell, receipt: Cell) {
-        const withdrawal = {
-            cellOutput: {
-                capacity: deposit.cellOutput.capacity,
-                lock: this.#accountLock,
-                type: defaultScript("DAO")
-            },
-            data: hexify(Uint64LE.pack(BI.from(deposit.blockNumber)))
-        };
-
-
-        return this.add("input", "start", receipt)
-            .add("input", "start", deposit)
-            .add("output", "start", withdrawal);
-    }
-
     async buildAndSend(feeRate: BI = BI.from(1000)) {
         const ckbDelta = await this.getCkbDelta();
 
@@ -153,7 +69,7 @@ export class TransactionBuilder {
 
         const signedTransaction = await this.#signer(transaction);
 
-        const txHash = await sendTransaction(signedTransaction, this.#rpc);
+        const txHash = await sendTransaction(signedTransaction, getRPC());
 
         return { transaction, fee, signedTransaction, txHash }
     }
@@ -168,6 +84,22 @@ export class TransactionBuilder {
             changeCells.push({
                 cellOutput: {
                     capacity: ckbDelta.toHexString(),
+                    lock: this.#accountLock,
+                    type: undefined,
+                },
+                data: "0x"
+            });
+        } else if (ckbDelta.gte(parseUnit("204", "ckb")) && dckbDelta.gt(0)) {
+            changeCells.push({
+                cellOutput: {
+                    capacity: parseUnit("142", "ckb").toHexString(),
+                    lock: this.#accountLock,
+                    type: defaultScript("SUDT")
+                },
+                data: hexify(Uint128LE.pack(dckbDelta))
+            }, {
+                cellOutput: {
+                    capacity: ckbDelta.sub(parseUnit("142", "ckb")).toHexString(),
                     lock: this.#accountLock,
                     type: undefined,
                 },
@@ -270,11 +202,13 @@ export class TransactionBuilder {
     }
 
     async #getHeader(c: Cell) {
-        if (!c.blockHash || !c.blockNumber) {
-            throw Error("Cell must have both blockHash and blockNumber populated");
+        if (!c.blockNumber) {
+            throw Error("Cell must have blockNumber populated");
         }
 
-        this.#blockNumber2BlockHash[c.blockNumber] = c.blockHash;
+        if (c.blockHash) {
+            this.#blockNumber2BlockHash[c.blockNumber] = c.blockHash;
+        }
 
         return this.#getHeaderByNumber(c.blockNumber);
     }
@@ -285,7 +219,7 @@ export class TransactionBuilder {
         let header = this.#blockHash2Header[blockHash];
 
         if (!header) {
-            header = await this.#rpc.getHeader(blockHash);
+            header = await getRPC().getHeader(blockHash);
             this.#blockHash2Header[blockHash] = header;
             if (!header) {
                 throw Error("Header not found from blockHash " + blockHash);
@@ -298,7 +232,7 @@ export class TransactionBuilder {
     async #getBlockHash(blockNumber: Hexadecimal) {
         let blockHash = this.#blockNumber2BlockHash[blockNumber];
         if (!blockHash) {
-            blockHash = await this.#rpc.getBlockHash(blockNumber);
+            blockHash = await getRPC().getBlockHash(blockNumber);
             this.#blockNumber2BlockHash[blockNumber] = blockHash;
             if (!blockHash) {
                 throw Error("Block hash not found from blockNumber " + blockNumber);
@@ -429,8 +363,6 @@ async function addWitnessPlaceholders(transaction: TransactionSkeletonType, acco
 
     return transaction;
 }
-
-
 
 async function sendTransaction(signedTransaction: Transaction, rpc: RPC) {
     //Send the transaction

@@ -90,23 +90,37 @@ export function defaultScript(name: string): Script {
             return { ...s, args: "0xe3e93d10fd0bf4bcf8da9dec59a51f083521b3e11a10077614b3b53b933792d60f000000" };
         case "SUDT":
             return { ...s, args: computeScriptHash(defaultScript("UDT_OWNER")) };
-        case "PW_LOCK":
-            return { ...s, args: ethereum.selectedAddress };
         default:
             return s;
     }
 }
 
-export function getNodeUrl() {
-    return "http://127.0.0.1:8114/";
+export function defaultCellDeps(name: string): CellDep {
+    let configData = getConfig().SCRIPTS[name];
+    if (!configData) {
+        throw Error(name + " not found");
+    }
+
+    return {
+        outPoint: {
+            txHash: configData.TX_HASH,
+            index: configData.INDEX,
+        },
+        depType: configData.DEP_TYPE,
+    };
 }
+
+const _rpc = new RPC("http://127.0.0.1:8114/", { timeout: 10000 });
 
 export function getRPC() {
-    return new RPC(getNodeUrl(), { timeout: 10000 });
+    return _rpc;
 }
 
-export function getIndexer() {
-    return new Indexer(getNodeUrl());
+const _indexer = new Indexer("http://127.0.0.1:8114/");
+
+export async function getSyncedIndexer() {
+    await _indexer.waitForSync();
+    return _indexer;
 }
 
 export async function getLiveCell(outPoint: OutPoint) {
@@ -156,19 +170,4 @@ export function calculateFee(transaction: TransactionSkeletonType, feeRate: BIis
         return fee.add(1);
     }
     return fee;
-}
-
-export function defaultCellDeps(name: string): CellDep {
-    let configData = getConfig().SCRIPTS[name];
-    if (!configData) {
-        throw Error(name + " not found");
-    }
-
-    return {
-        outPoint: {
-            txHash: configData.TX_HASH,
-            index: configData.INDEX,
-        },
-        depType: configData.DEP_TYPE,
-    };
 }
