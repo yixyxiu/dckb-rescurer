@@ -27,10 +27,6 @@ export function App() {
             <ul>
                 <li>Ethereum Address: {ethereumAddress}</li>
                 <li>Nervos Address(PW): {encodeToAddress(accountLock)}</li>
-                <li>
-                    Pw lock script:
-                    <pre>{JSON.stringify(accountLock, null, 2)}</pre>
-                </li>
             </ul>
             <Body accountLock={accountLock} />
         </>

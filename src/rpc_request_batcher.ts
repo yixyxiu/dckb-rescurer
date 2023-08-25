@@ -1,8 +1,8 @@
 import { getRPC } from "./utils";
 import { Mutex } from "./mutex";
 
-export async function pushRPCRequest(key: string) {
-    return new Promise((resolve, reject) =>
+export async function pushRPCRequest<T>(key: string) {
+    return new Promise<T>((resolve, reject) =>
         fetcherGlobalState.update(async (requests) => {
             //Set delayed executor for new batch request
             if (requests.size == 0) {
@@ -17,8 +17,8 @@ export async function pushRPCRequest(key: string) {
 }
 
 type Callback = {
-    resolve: (x: unknown) => void;
-    reject: (x: unknown) => void;
+    resolve: (x: any) => void;
+    reject: (x: any) => void;
 }
 
 const fetcherGlobalState = new Mutex(new Map<string, Callback[]>());

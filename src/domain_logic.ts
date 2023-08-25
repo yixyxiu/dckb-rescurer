@@ -9,14 +9,13 @@ import { calculateDaoEarliestSinceCompatible, calculateMaximumWithdrawCompatible
 import { Uint128LE, Uint64LE } from "@ckb-lumos/codec/lib/number/uint";
 import { hexify } from "@ckb-lumos/codec/lib/bytes";
 
-type signerType = (tx: TransactionSkeletonType) => Promise<Transaction>;
+type signerType = (tx: TransactionSkeletonType, accountLock: Script) => Promise<Transaction>;
 
 export class TransactionBuilder {
     #accountLock: Script;
     #signer: signerType
 
-    #blockNumber2BlockHash: { [id: Hexadecimal]: Hexadecimal; };
-    #blockHash2Header: { [id: Hexadecimal]: Header; };
+    #blockNumber2Header: Map<Hexadecimal, Header>;
 
     #inputs: Cell[];
     #outputs: Cell[];
@@ -24,14 +23,12 @@ export class TransactionBuilder {
     constructor(
         accountLock: Script,
         signer: signerType,
-        blockNumber2BlockHashCache: { [id: Hexadecimal]: Hexadecimal; } = {},
-        blockHash2HeaderCache: { [id: Hexadecimal]: Header; } = {}
+        headersCache: Header[],
     ) {
         this.#accountLock = accountLock;
         this.#signer = signer;
 
-        this.#blockNumber2BlockHash = blockNumber2BlockHashCache;
-        this.#blockHash2Header = blockHash2HeaderCache;
+        this.#blockNumber2Header = new Map(headersCache.map(h => [h.number, h]));
 
         this.#inputs = [];
         this.#outputs = [];
@@ -67,7 +64,7 @@ export class TransactionBuilder {
 
         const transaction = await this.#buildWithChange(ckbDelta.sub(fee));
 
-        const signedTransaction = await this.#signer(transaction);
+        const signedTransaction = await this.#signer(transaction, this.#accountLock);
 
         const txHash = await sendTransaction(signedTransaction, getRPC());
 
@@ -124,11 +121,13 @@ export class TransactionBuilder {
 
         transaction = addCellDeps(transaction);
 
-        transaction = await addHeaderDeps(transaction, async (blockNumber: string) => this.#getBlockHash(blockNumber));
+        const getBlockHash = async (blockNumber: Hexadecimal) => (await this.#getHeaderByNumber(blockNumber)).hash;
+
+        transaction = await addHeaderDeps(transaction, getBlockHash);
 
         transaction = await addInputSinces(transaction, async (c: Cell) => this.#withdrawedDaoSince(c));
 
-        transaction = await addWitnessPlaceholders(transaction, this.#accountLock, async (blockNumber: string) => this.#getBlockHash(blockNumber));
+        transaction = await addWitnessPlaceholders(transaction, this.#accountLock, getBlockHash);
 
         return transaction;
     }
@@ -141,7 +140,7 @@ export class TransactionBuilder {
             //Second Withdrawal step from NervosDAO
             if (scriptEq(c.cellOutput.type, daoType) && c.data !== "0x0000000000000000") {
                 const depositHeader = await this.#getHeaderByNumber(Uint64LE.unpack(c.data).toHexString());
-                const withdrawalHeader = await this.#getHeader(c);
+                const withdrawalHeader = await this.#getHeaderByNumber(c.blockNumber!);
                 const maxWithdrawable = calculateMaximumWithdrawCompatible(c, depositHeader.dao, withdrawalHeader.dao)
                 ckbDelta = ckbDelta.add(maxWithdrawable);
             } else {
@@ -195,51 +194,25 @@ export class TransactionBuilder {
             throw Error("Not a withdrawed dao cell")
         }
 
-        const withdrawalHeader = await this.#getHeader(c);
+        const withdrawalHeader = await this.#getHeaderByNumber(c.blockNumber!);
         const depositHeader = await this.#getHeaderByNumber(Uint64LE.unpack(c.data).toHexString());
 
         return calculateDaoEarliestSinceCompatible(depositHeader.epoch, withdrawalHeader.epoch);
     }
 
-    async #getHeader(c: Cell) {
-        if (!c.blockNumber) {
-            throw Error("Cell must have blockNumber populated");
-        }
-
-        if (c.blockHash) {
-            this.#blockNumber2BlockHash[c.blockNumber] = c.blockHash;
-        }
-
-        return this.#getHeaderByNumber(c.blockNumber);
-    }
-
     async #getHeaderByNumber(blockNumber: Hexadecimal) {
-        const blockHash = await this.#getBlockHash(blockNumber);
-
-        let header = this.#blockHash2Header[blockHash];
+        let header = this.#blockNumber2Header.get(blockNumber);
 
         if (!header) {
-            header = await getRPC().getHeader(blockHash);
-            this.#blockHash2Header[blockHash] = header;
+            console.log(`Warning: missing blockNumber ${blockNumber} header from cache`);
+            header = await getRPC().getHeaderByNumber(blockNumber);
+            this.#blockNumber2Header.set(blockNumber, header);
             if (!header) {
-                throw Error("Header not found from blockHash " + blockHash);
+                throw Error("Header not found from blockNumber " + blockNumber);
             }
         }
 
         return header;
-    }
-
-    async #getBlockHash(blockNumber: Hexadecimal) {
-        let blockHash = this.#blockNumber2BlockHash[blockNumber];
-        if (!blockHash) {
-            blockHash = await getRPC().getBlockHash(blockNumber);
-            this.#blockNumber2BlockHash[blockNumber] = blockHash;
-            if (!blockHash) {
-                throw Error("Block hash not found from blockNumber " + blockNumber);
-            }
-        }
-
-        return blockHash;
     }
 }
 
@@ -299,12 +272,12 @@ async function addHeaderDeps(transaction: TransactionSkeletonType, blockNumber2B
     const daoType = defaultScript("DAO");
     const uniqueBlockHashes: Set<string> = new Set();
     for (const c of transaction.inputs) {
-        if (!c.blockHash || !c.blockNumber) {
-            throw Error("Cell must have both blockHash and blockNumber populated");
-        }
-
         if (scriptEq(c.cellOutput.type, daoType)) {
-            uniqueBlockHashes.add(c.blockHash);
+            if (!c.blockNumber) {
+                throw Error("Cell must have blockNumber populated");
+            }
+
+            uniqueBlockHashes.add(await blockNumber2BlockHash(c.blockNumber));
             if (c.data !== "0x0000000000000000") {
                 uniqueBlockHashes.add(await blockNumber2BlockHash(Uint64LE.unpack(c.data).toHexString()));
             }

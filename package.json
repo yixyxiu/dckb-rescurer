@@ -7,7 +7,7 @@
     "start": "parcel",
     "build": "parcel build"
   },
-  "source": "index.html",
+  "source": "src/index.html",
   "keywords": [],
   "author": "",
   "license": "MIT",
