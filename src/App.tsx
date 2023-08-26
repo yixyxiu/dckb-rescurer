@@ -1,8 +1,6 @@
 import React from "react";
 import { ethereum } from "./pw_lock_signer";
 import useSWR from "swr";
-import { defaultScript } from "./utils";
-import { encodeToAddress } from "@ckb-lumos/helpers";
 import { Body } from "./Body";
 
 export function App() {
@@ -18,17 +16,5 @@ export function App() {
         </button>
     );
 
-    const accountLock = { ...defaultScript("PW_LOCK"), args: ethereumAddress };
-
-    return (
-        <>
-            <h1>dCKB Rescuer</h1>
-            <h2>Account information</h2>
-            <ul>
-                <li>Ethereum Address: {ethereumAddress}</li>
-                <li>Nervos Address(PW): {encodeToAddress(accountLock)}</li>
-            </ul>
-            <Body accountLock={accountLock} />
-        </>
-    );
+    return (<Body ethereumAddress={ethereumAddress} />);
 }
