@@ -2,9 +2,8 @@ import { RPC } from "@ckb-lumos/rpc";
 import { BI, BIish } from "@ckb-lumos/bi"
 import { getConfig, initializeConfig } from "@ckb-lumos/config-manager/lib";
 import { computeScriptHash } from "@ckb-lumos/base/lib/utils";
-import { Cell, CellDep, OutPoint, Script, Transaction, blockchain } from "@ckb-lumos/base";
+import { CellDep, Script, blockchain } from "@ckb-lumos/base";
 import { Indexer } from "@ckb-lumos/ckb-indexer";
-import { ethereum } from "./pw_lock_signer";
 import { TransactionSkeletonType, createTransactionFromSkeleton } from "@ckb-lumos/helpers";
 
 initializeConfig({
@@ -123,20 +122,6 @@ export async function getSyncedIndexer() {
     return _indexer;
 }
 
-export async function getLiveCell(outPoint: OutPoint) {
-    const rpc = getRPC();
-    const res = await rpc.getLiveCell(outPoint, true);
-
-    if (res.status !== "live")
-        throw new Error(`Live cell not found at out point: ${outPoint.txHash}-${outPoint.index}`);
-
-    return <Cell>{
-        cellOutput: res.cell.output,
-        outPoint,
-        data: res.cell.data.content,
-    }
-}
-
 export function scriptEq(s0: Script | undefined, s1: Script | undefined) {
     if (!s0 && !s1) {
         throw Error("Comparing two undefined Scripts")
@@ -149,13 +134,42 @@ export function scriptEq(s0: Script | undefined, s1: Script | undefined) {
         s0.args === s1.args;
 }
 
-export function parseEpoch(epoch: BIish) {
+export type Epoch = {
+    length: BI;
+    index: BI;
+    number: BI;
+};
+
+export function parseEpoch(epoch: BIish): Epoch {
     const _epoch = BI.from(epoch);
     return {
         length: _epoch.shr(40).and(0xfff),
         index: _epoch.shr(24).and(0xfff),
         number: _epoch.and(0xffffff),
     };
+}
+
+export function epochCompare(e0: Epoch, e1: Epoch): 1 | 0 | -1 {
+    if (e0.number.lt(e1.number)) {
+        return -1;
+    }
+
+    if (e0.number.gt(e1.number)) {
+        return 1;
+    }
+
+    const v0 = e0.index.mul(e1.length);
+    const v1 = e1.index.mul(e0.length);
+
+    if (v0.lt(v1)) {
+        return -1;
+    }
+
+    if (v0.gt(v1)) {
+        return 1;
+    }
+
+    return 0;
 }
 
 export function calculateFee(transaction: TransactionSkeletonType, feeRate: BIish): BI {

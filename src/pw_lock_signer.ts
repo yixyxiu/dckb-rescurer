@@ -21,7 +21,7 @@ export interface EthereumProvider {
 // @ts-ignore
 export const ethereum = window.ethereum as EthereumProvider;
 
-export async function signTransaction(transaction: TransactionSkeletonType, accountLock: Script) {
+export async function signer(transaction: TransactionSkeletonType, accountLock: Script) {
     // just like P2PKH: https://github.com/nervosnetwork/ckb-system-scripts/wiki/How-to-sign-transaction
     const keccak = createKeccak("keccak256");
 

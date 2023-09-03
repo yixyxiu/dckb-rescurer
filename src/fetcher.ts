@@ -1,5 +1,4 @@
 import useSWR from "swr";
-import useSWRInfinite from 'swr/infinite'
 import { Cell } from "@ckb-lumos/base";
 import { CKBIndexerQueryOptions } from "@ckb-lumos/ckb-indexer/lib/type";
 import { CellCollector } from "@ckb-lumos/ckb-indexer";
@@ -40,23 +39,6 @@ export function useRPC<T>(mutatorAccumulator: (_: any) => void, ...params: strin
     mutatorAccumulator(mutate);
 
     return data as T;
-}
-
-export function useRPCImmutable<T>(method: string, keys: string[]) {
-    const getKey = (i: number) => i < keys.length ? ["rpc", method, keys[i]].join("/") : null;
-
-    const { data, isLoading, error } = useSWRInfinite(getKey, fetcher, {
-        initialSize: keys.length,
-        revalidateFirstPage: false,
-        revalidateIfStale: false,
-        revalidateOnFocus: false,
-        revalidateOnReconnect: false,
-        parallel: true
-    });
-
-    if (isLoading || error || !Array.isArray(data)) return <T[]>[];
-
-    return <T[]>data;
 }
 
 // Example of use

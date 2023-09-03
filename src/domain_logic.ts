@@ -1,5 +1,3 @@
-import { calculateFee, defaultCellDeps, defaultScript, getRPC, scriptEq } from "./utils";
-
 import { RPC } from "@ckb-lumos/rpc";
 import { BI, parseUnit } from "@ckb-lumos/bi"
 import { TransactionSkeleton, TransactionSkeletonType } from "@ckb-lumos/helpers";
@@ -8,6 +6,7 @@ import { Cell, Header, Hexadecimal, Script, Transaction, WitnessArgs, blockchain
 import { calculateDaoEarliestSinceCompatible, calculateMaximumWithdrawCompatible } from "@ckb-lumos/common-scripts/lib/dao";
 import { Uint128LE, Uint64LE } from "@ckb-lumos/codec/lib/number/uint";
 import { hexify } from "@ckb-lumos/codec/lib/bytes";
+import { calculateFee, defaultCellDeps, defaultScript, getRPC, scriptEq } from "./utils";
 
 type signerType = (tx: TransactionSkeletonType, accountLock: Script) => Promise<Transaction>;
 
@@ -23,12 +22,12 @@ export class TransactionBuilder {
     constructor(
         accountLock: Script,
         signer: signerType,
-        headersCache: Header[],
+        headers: Header[],
     ) {
         this.#accountLock = accountLock;
         this.#signer = signer;
 
-        this.#blockNumber2Header = new Map(headersCache.map(h => [h.number, h]));
+        this.#blockNumber2Header = new Map(headers.map(h => [h.number, h]));
 
         this.#inputs = [];
         this.#outputs = [];

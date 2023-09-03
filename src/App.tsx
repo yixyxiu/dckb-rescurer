@@ -1,7 +1,8 @@
 import React from "react";
+import useSWR, { SWRConfig } from "swr";
 import { ethereum } from "./pw_lock_signer";
-import useSWR from "swr";
 import { Body } from "./Body";
+import { fetcher } from "./fetcher";
 
 export function App() {
     const { data: ethereumAddress, error, isLoading, mutate } = useSWR(
@@ -16,5 +17,9 @@ export function App() {
         </button>
     );
 
-    return (<Body ethereumAddress={ethereumAddress} />);
+    return (
+        <SWRConfig value={{ fetcher }} >
+            <Body ethereumAddress={ethereumAddress} />
+        </SWRConfig>
+    );
 }
