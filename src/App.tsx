@@ -9,12 +9,22 @@ export function App() {
         "ethereum/selectedAddress", async () => ethereum.enable().then(() => ethereum.selectedAddress)
     );
 
-    if (!ethereum) return <div>MetaMask doesn't seem to be installed</div>;
+    if (!ethereum) return (
+        <>
+            <h1>dCKB Rescuer</h1>
+            <p>MetaMask doesn't seem to be installed</p>
+        </>
+    );
 
     if (isLoading || error || ethereumAddress === undefined) return (
-        <button onClick={mutate} disabled={error ? true : false}>
-            Connect to MetaMask
-        </button>
+        <>
+            <h1>dCKB Rescuer</h1>
+            <p>You want to retrieve your dCKB funds, make Metamask understand that!! 💪</p>
+            <button onClick={mutate} disabled={error ? true : false}>
+                Connect MetaMask to dCKB Rescuer
+            </button>
+        </>
+
     );
 
     return (

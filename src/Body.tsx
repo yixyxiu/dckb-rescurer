@@ -20,11 +20,12 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
 
     const mutator = mutatorAccumulator();
 
-    const tipHeader = useRPC<Header>(mutator, "getTipHeader");
-
     const capacities = useCollector(mutator, { type: undefined, lock: accountLock, withData: true });
 
     const sudts = useCollector(mutator, { type: defaultScript("SUDT"), lock: accountLock });
+
+    const totalCapacitiesValue = sum(capacities.map(c => c.cellOutput.capacity));
+    const totalSudtsValue = sum(sudts.map(c => Uint128LE.unpack(c.data)));
 
     const receipts = [
         ...useCollector(mutator, { type: defaultScript("DAO_INFO"), lock: accountLock }),
@@ -44,8 +45,10 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
         value: BI;
         since: Epoch;
         action: () => Promise<void>;
-        key: Hexadecimal;
+        disabled: boolean;
+        cell: Cell,
     }[];
+    const tipHeader = useRPC<Header>(mutator, "getTipHeader");
     for (const i of Array.from({ length: 1000 }).keys()) {
         const [h1, h2] = (
             i < daos.length ? [
@@ -58,7 +61,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
             rpcCalls => useSWRImmutable<Header>(rpcCalls).data
         );
 
-        if (!h1 || !h2) {
+        if (!h1 || !h2 || !tipHeader) {
             continue;
         }
 
@@ -77,36 +80,29 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 .add("input", "end", deposit, receipt, ...sudts)
                 .add("output", "end", withdrawal);
 
-            const value = (
-                tipHeader ?
-                    calculateMaximumWithdrawCompatible(deposit, h1.dao, tipHeader.dao) :
-                    BI.from(deposit.cellOutput.capacity)
-            ).add(receipt.cellOutput.capacity);
-
-            const since = parseEpoch(
-                tipHeader ?
-                    calculateDaoEarliestSinceCompatible(h1.dao, tipHeader.dao) :
-                    h2.epoch
-            )
-
             actionInfos.push({
                 type: "request",
-                value,
-                since,
+                value: calculateMaximumWithdrawCompatible(deposit, h1.dao, tipHeader.dao)
+                    .add(receipt.cellOutput.capacity),
+                since: parseEpoch(calculateDaoEarliestSinceCompatible(h1.epoch, tipHeader.epoch)),
                 action: async () => { await builder.buildAndSend(); mutator() },
-                key: deposit.outPoint!.txHash,
+                disabled: totalSudtsValue.lt(deposit.cellOutput.capacity) ? true : false,
+                cell: deposit,
             });
         } else {// Handle withdrawal action
             const withdrawalRequest = daos[i];
             const builder = new TransactionBuilder(accountLock, signer, [h1, h2])
                 .add("input", "end", withdrawalRequest);
 
+            const since = parseEpoch(calculateDaoEarliestSinceCompatible(h2.epoch, h1.epoch))
+
             actionInfos.push({
                 type: "withdrawal",
                 value: calculateMaximumWithdrawCompatible(withdrawalRequest, h2.dao, h1.dao),
-                since: parseEpoch(calculateDaoEarliestSinceCompatible(h2.dao, h1.dao)),
+                since,
                 action: async () => { await builder.buildAndSend(); mutator() },
-                key: withdrawalRequest.outPoint!.txHash,
+                disabled: epochCompare(since, parseEpoch(tipHeader.epoch)) === -1 ? false : true,
+                cell: withdrawalRequest,
             });
         }
     }
@@ -117,6 +113,21 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
     const totalWithdrawableValue = sum(actionInfos.filter(i => i.type === "withdrawal").map(i => i.value));
 
     try {
+        if (!tipHeader) {
+            return (
+                <>
+                    <h1>dCKB Rescuer</h1>
+                    <h2>Account information</h2>
+                    <ul>
+                        <li>Ethereum Address: <a href={`https://etherscan.io/address/${ethereumAddress}`}>{ethereumAddress}</a></li>
+                        <li>Nervos Address(PW): <a href={`https://explorer.nervos.org/address/${address}`}>{midElide(address, ethereumAddress.length)}</a></li>
+                    </ul>
+                    <h2>Loading dCKB Actions...</h2>
+                    <p>Downloading the latest dCKB data, just for you. Hang tight...</p>
+                </>
+            );
+        }
+
         return (
             <>
                 <h1>dCKB Rescuer</h1>
@@ -124,25 +135,34 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 <ul>
                     <li>Ethereum Address: <a href={`https://etherscan.io/address/${ethereumAddress}`}>{ethereumAddress}</a></li>
                     <li>Nervos Address(PW): <a href={`https://explorer.nervos.org/address/${address}`}>{midElide(address, ethereumAddress.length)}</a></li>
-                    <li>Available Balance: {display(sum(capacities.map(c => c.cellOutput.capacity)))} CKB
-                        & {display(sum(sudts.map(c => Uint128LE.unpack(c.data))))} dCKB</li>
-                    <li>{deposits.length} Deposits with {display(totalDepositedValue)} CKB locked</li>
-                    <li>Amount required to unlock all deposits: {display(sum(deposits.map(c => c.cellOutput.capacity)))} dCKB</li>
-                    <li>{withdrawalRequests.length} Pending Withdrawals with {display(totalWithdrawableValue)} CKB locked</li>
+                    <li>Available Balance: {display(totalCapacitiesValue)} CKB & {display(totalSudtsValue)} dCKB</li>
+                    {deposits.length > 0 ?
+                        <>
+                            <li>{deposits.length} Deposit{deposits.length > 1 ? "s" : ""} with {display(totalDepositedValue)} CKB locked</li>
+                            <li>Amount required to unlock all deposits: {display(sum(deposits.map(c => c.cellOutput.capacity)))} dCKB</li>
+                        </>
+                        : <li>No Deposits found</li>
+                    }
+                    <li>{withdrawalRequests.length > 0 ? `${withdrawalRequests.length} Pending Withdrawal${withdrawalRequests.length > 1 ? "s" : ""} with ${display(totalWithdrawableValue)} CKB locked` : "No Pending Withdrawals found"}</li>
                 </ul >
-                <h2>Actions</h2>
-                <ul>
-                    {actionInfos.map(
-                        ({ type, value, action, key }) =>
-                            <li key={key}>
-                                <button onClick={action} >
-                                    {type === "request" ?
-                                        `Request Withdrawal of ${display(value)} CKB Deposit` :
-                                        `Complete Withdrawal of ${display(value)} CKB Deposit`}
-                                </button>
-                            </li>
-                    )}
-                </ul>
+                <h2>dCKB Actions</h2>
+                {actionInfos.length > 0 ?
+                    <ul>
+                        {actionInfos.map(
+                            ({ type, value, since, action, disabled, cell }) =>
+                                <li key={cell.outPoint!.txHash}>
+                                    <button onClick={action} disabled={disabled}>
+                                        {type === "request" ?
+                                            `Burn ${display(BI.from(cell.cellOutput.capacity))} dCKB to unlock a ${display(value)} CKB Deposit` :
+                                            `Complete Withdrawal of ${display(value)} CKB Deposit`}
+                                    </button>
+                                </li>
+                        )}
+                    </ul>
+                    :
+                    <p>No actions available, nothing to do here 😎</p>
+                }
+
             </>
         );
     } finally {
