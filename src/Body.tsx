@@ -159,6 +159,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                     </ul>
                     <h2>Loading dCKB Actions...</h2>
                     <p>Downloading the latest dCKB data, just for you. Hang tight...</p>
+                    <progress />
                 </>
             );
         }
@@ -181,6 +182,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                     <li>{withdrawalRequests.length > 0 ? `${withdrawalRequests.length} Pending Withdrawal${withdrawalRequests.length > 1 ? "s" : ""} with ${display(totalWithdrawableValue)} CKB locked` : "No Pending Withdrawals found"}</li>
                 </ul >
                 <h2>dCKB Actions</h2>
+                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <progress /> : null}
                 {actionInfos.length > 0 ?
                     <ul>
                         {actionInfos.map(
