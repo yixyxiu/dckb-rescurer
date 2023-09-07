@@ -172,6 +172,13 @@ export function epochCompare(e0: Epoch, e1: Epoch): 1 | 0 | -1 {
     return 0;
 }
 
+export function stringifyEpoch(e: Epoch) {
+    return BI.from(e.length.shl(40))
+        .add(e.index.shl(24))
+        .add(e.number)
+        .toHexString();
+}
+
 export function calculateFee(transaction: TransactionSkeletonType, feeRate: BIish): BI {
     const serializedTx = blockchain.Transaction.pack(createTransactionFromSkeleton(transaction));
     // 4 is serialized offset bytesize;

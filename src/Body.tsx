@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useReducer } from "react";
 import useSWRImmutable from 'swr/immutable'
-import { Cell, Header, Hexadecimal, Script } from "@ckb-lumos/base";
+import { Cell, Header, Hexadecimal, OutPoint, Script } from "@ckb-lumos/base";
 import { Uint128LE, Uint64LE } from "@ckb-lumos/codec/lib/number/uint";
 import { BI, BIish } from "@ckb-lumos/bi";
 import { computeScriptHash } from "@ckb-lumos/base/lib/utils";
@@ -8,7 +8,7 @@ import { hexify } from "@ckb-lumos/codec/lib/bytes";
 import { encodeToAddress } from "@ckb-lumos/helpers";
 import { calculateDaoEarliestSinceCompatible, calculateMaximumWithdrawCompatible } from "@ckb-lumos/common-scripts/lib/dao";
 import { processRPCRequests } from "./rpc_request_batcher";
-import { Epoch, defaultScript, epochCompare, parseEpoch } from "./utils";
+import { Epoch, defaultScript, epochCompare, parseEpoch, stringifyEpoch } from "./utils";
 import { mutatorAccumulator, useCollector, useRPC } from "./fetcher";
 import { TransactionBuilder } from "./domain_logic";
 import { signer } from "./pw_lock_signer";
@@ -19,6 +19,8 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
     const address = encodeToAddress(accountLock);
 
     const mutator = mutatorAccumulator();
+
+    const [deadCells, dispatchDeadCells] = useReducer(reducer, new ImmutableSet<Cell>(c => `${c.outPoint!.txHash}-${c.outPoint!.index}`));
 
     const capacities = useCollector(mutator, { type: undefined, lock: accountLock, withData: true });
 
@@ -76,32 +78,65 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 },
                 data: hexify(Uint64LE.pack(BI.from(deposit.blockNumber)))
             };
+
+            const inputs = [deposit, receipt, ...sudts]
             const builder = new TransactionBuilder(accountLock, signer, [h1])
-                .add("input", "end", deposit, receipt, ...sudts)
+                .add("input", "end", ...inputs)
                 .add("output", "end", withdrawal);
+
+            // //Last epoch withdrawals should be at the end of the list as transaction may not be included in time
+            // let tipEpoch = parseEpoch(tipHeader.epoch);
+            // const tipEpochPlusOne = stringifyEpoch({...tipEpoch, number: tipEpoch.number.add(1) })
+
+            const action = async () => {
+                dispatchDeadCells({ type: "add", cells: inputs });
+                try {
+                    await builder.buildAndSend();
+                    //Show successful message to user!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    mutator();
+                } catch (err) {
+                    //Show error to user!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    console.log(err);
+                    dispatchDeadCells({ type: "remove", cells: inputs });
+                }
+            };
 
             actionInfos.push({
                 type: "request",
                 value: calculateMaximumWithdrawCompatible(deposit, h1.dao, tipHeader.dao)
                     .add(receipt.cellOutput.capacity),
-                since: parseEpoch(calculateDaoEarliestSinceCompatible(h1.epoch, tipHeader.epoch)),
-                action: async () => { await builder.buildAndSend(); mutator() },
-                disabled: totalSudtsValue.lt(deposit.cellOutput.capacity) ? true : false,
+                since: parseEpoch(calculateDaoEarliestSinceCompatible(h1.epoch, tipHeader.epoch)),// tipEpochPlusOne)),
+                action,
+                disabled: deadCells.hasAny(...inputs) ? true : totalSudtsValue.lt(deposit.cellOutput.capacity) ? true : false,
                 cell: deposit,
             });
         } else {// Handle withdrawal action
             const withdrawalRequest = daos[i];
+            const inputs = [withdrawalRequest]
             const builder = new TransactionBuilder(accountLock, signer, [h1, h2])
-                .add("input", "end", withdrawalRequest);
+                .add("input", "end", ...inputs);
 
             const since = parseEpoch(calculateDaoEarliestSinceCompatible(h2.epoch, h1.epoch))
+
+            const action = async () => {
+                dispatchDeadCells({ type: "add", cells: inputs });
+                try {
+                    await builder.buildAndSend();
+                    //Show successful message to user!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    mutator();
+                } catch (err) {
+                    //Show error to user!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    console.log(err);
+                    dispatchDeadCells({ type: "remove", cells: inputs });
+                }
+            };
 
             actionInfos.push({
                 type: "withdrawal",
                 value: calculateMaximumWithdrawCompatible(withdrawalRequest, h2.dao, h1.dao),
                 since,
-                action: async () => { await builder.buildAndSend(); mutator() },
-                disabled: epochCompare(since, parseEpoch(tipHeader.epoch)) === -1 ? false : true,
+                action,
+                disabled: deadCells.hasAny(...inputs) ? true : epochCompare(since, parseEpoch(tipHeader.epoch)) === -1 ? false : true,
                 cell: withdrawalRequest,
             });
         }
@@ -160,13 +195,71 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                         )}
                     </ul>
                     :
-                    <p>No actions available, nothing to do here 😎</p>
+                    <p>No actions available, nothing to do here! 😎</p>
                 }
 
             </>
         );
     } finally {
         processRPCRequests();
+    }
+}
+
+function reducer(state: ImmutableSet<Cell>, action: { type: "add" | "remove", cells: Cell[] }) {
+    switch (action.type) {
+        case 'add': {
+            return state.union(...action.cells);
+        }
+        case 'remove': {
+            return state.difference(...action.cells);
+        }
+    }
+    throw Error('Unknown action: ' + action.type);
+}
+
+class ImmutableSet<T> {
+    #getKey: (v: T) => string;
+    #keys: Readonly<Set<string>>;
+
+    constructor(getKey: (v: T) => string) {
+        this.#getKey = getKey;
+        this.#keys = new Set();
+    }
+
+    #newFrom(keys: Set<string>) {
+        const res = new ImmutableSet(this.#getKey);
+        res.#keys = keys;
+        return res;
+    }
+
+    union(...vv: T[]) {
+        const keys = new Set([...this.#keys, ...vv.map(this.#getKey)]);
+
+        if (keys.size == this.#keys.size) {
+            return this;
+        }
+
+        return this.#newFrom(keys);
+    }
+
+    difference(...vv: T[]) {
+        const b = new Set(vv.map(this.#getKey));
+        const keys = new Set([...this.#keys].filter(k => !b.has(k)));
+
+        if (keys.size == this.#keys.size) {
+            return this;
+        }
+
+        return this.#newFrom(keys);
+    }
+
+    hasAny(...vv: T[]) {
+        for (const c of vv) {
+            if (this.#keys.has(this.#getKey(c))) {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
