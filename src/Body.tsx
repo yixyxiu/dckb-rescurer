@@ -84,9 +84,9 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 .add("input", "end", ...inputs)
                 .add("output", "end", withdrawal);
 
-            // //Last epoch withdrawals should be at the end of the list as transaction may not be included in time
-            // let tipEpoch = parseEpoch(tipHeader.epoch);
-            // const tipEpochPlusOne = stringifyEpoch({...tipEpoch, number: tipEpoch.number.add(1) })
+            //Last epoch withdrawals should be at the end of the actions list as transaction may not be included in time
+            let tipEpoch = parseEpoch(tipHeader.epoch);
+            const tipEpochPlusOne = stringifyEpoch({ ...tipEpoch, number: tipEpoch.number.add(1) })
 
             const action = async () => {
                 dispatchDeadCells({ type: "add", cells: inputs });
@@ -105,7 +105,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 type: "request",
                 value: calculateMaximumWithdrawCompatible(deposit, h1.dao, tipHeader.dao)
                     .add(receipt.cellOutput.capacity),
-                since: parseEpoch(calculateDaoEarliestSinceCompatible(h1.epoch, tipHeader.epoch)),// tipEpochPlusOne)),
+                since: parseEpoch(calculateDaoEarliestSinceCompatible(h1.epoch, tipEpochPlusOne)),
                 action,
                 disabled: deadCells.hasAny(...inputs) ? true : totalSudtsValue.lt(deposit.cellOutput.capacity) ? true : false,
                 cell: deposit,
