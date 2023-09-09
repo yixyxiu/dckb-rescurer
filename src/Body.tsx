@@ -68,6 +68,19 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
             continue;
         }
 
+        const inputs: Cell[] = [];
+        const builder = new TransactionBuilder(accountLock, signer, [h1, h2], feeRate);
+        const action = async () => {
+            dispatchDeadCells({ type: "add", cells: inputs });
+            try {
+                await builder.buildAndSend();
+                mutator();
+            } catch (err) {
+                console.log(err);
+                dispatchDeadCells({ type: "remove", cells: inputs });
+            }
+        };
+
         if (i < deposits.length) {// Handle withdrawal request action
             const deposit = deposits[i];
             const receipt = receipts[i];
@@ -80,25 +93,12 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 data: hexify(Uint64LE.pack(BI.from(deposit.blockNumber)))
             };
 
-            const inputs = [deposit, receipt, ...sudts]
-            const builder = new TransactionBuilder(accountLock, signer, [h1], feeRate)
-                .add("input", "end", ...inputs)
-                .add("output", "end", withdrawal);
+            inputs.push(deposit, receipt, ...sudts);
+            builder.add("input", "end", ...inputs).add("output", "end", withdrawal);
 
             //Last epoch withdrawals should be at the end of the actions list as transaction may not be included in time
             let tipEpoch = parseEpoch(tipHeader.epoch);
             const tipEpochPlusOne = stringifyEpoch({ ...tipEpoch, number: tipEpoch.number.add(1) })
-
-            const action = async () => {
-                dispatchDeadCells({ type: "add", cells: inputs });
-                try {
-                    await builder.buildAndSend();
-                    mutator();
-                } catch (err) {
-                    console.log(err);
-                    dispatchDeadCells({ type: "remove", cells: inputs });
-                }
-            };
 
             actionInfos.push({
                 type: "request",
@@ -111,22 +111,10 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
             });
         } else {// Handle withdrawal action
             const withdrawalRequest = daos[i];
-            const inputs = [withdrawalRequest]
-            const builder = new TransactionBuilder(accountLock, signer, [h1, h2], feeRate)
-                .add("input", "end", ...inputs);
+            inputs.push(withdrawalRequest);
+            builder.add("input", "end", ...inputs);
 
             const since = parseEpoch(calculateDaoEarliestSinceCompatible(h2.epoch, h1.epoch))
-
-            const action = async () => {
-                dispatchDeadCells({ type: "add", cells: inputs });
-                try {
-                    await builder.buildAndSend();
-                    mutator();
-                } catch (err) {
-                    console.log(err);
-                    dispatchDeadCells({ type: "remove", cells: inputs });
-                }
-            };
 
             actionInfos.push({
                 type: "withdrawal",
