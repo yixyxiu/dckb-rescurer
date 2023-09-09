@@ -6,7 +6,7 @@ import { CellDep, Script, blockchain } from "@ckb-lumos/base";
 import { Indexer } from "@ckb-lumos/ckb-indexer";
 import { TransactionSkeletonType, createTransactionFromSkeleton } from "@ckb-lumos/helpers";
 
-const _IS_MAINNET: boolean = false;
+const _IS_MAINNET = !window.location.href.startsWith("http://localhost:") && !window.location.href.startsWith("file://");
 const _RPC_URL = _IS_MAINNET ? "https://rpc.ankr.com/nervos_ckb" : "http://127.0.0.1:8114/";
 
 initializeConfig({
