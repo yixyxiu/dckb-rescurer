@@ -6,8 +6,11 @@ import { CellDep, Script, blockchain } from "@ckb-lumos/base";
 import { Indexer } from "@ckb-lumos/ckb-indexer";
 import { TransactionSkeletonType, createTransactionFromSkeleton } from "@ckb-lumos/helpers";
 
+const _IS_MAINNET: boolean = false;
+const _RPC_URL = _IS_MAINNET ? "https://rpc.ankr.com/nervos_ckb" : "http://127.0.0.1:8114/";
+
 initializeConfig({
-    PREFIX: "ckt",
+    PREFIX: _IS_MAINNET ? "ckb" : "ckt",
     SCRIPTS: {
         DAO: {
             CODE_HASH: "0x82d76d1b75fe2fd9a27dfbaa65a039221a380d76c926f378d3f81cf3e7e13f2e",
@@ -109,13 +112,12 @@ export function defaultCellDeps(name: string): CellDep {
     };
 }
 
-const _rpc = new RPC("http://127.0.0.1:8114/", { timeout: 10000 });
+const _rpc = new RPC(_RPC_URL, { timeout: 10000 });
+const _indexer = new Indexer(_RPC_URL);
 
 export function getRPC() {
     return _rpc;
 }
-
-const _indexer = new Indexer("http://127.0.0.1:8114/");
 
 export async function getSyncedIndexer() {
     await _indexer.waitForSync();
@@ -179,11 +181,13 @@ export function stringifyEpoch(e: Epoch) {
         .toHexString();
 }
 
-export function calculateFee(transaction: TransactionSkeletonType, feeRate: BIish): BI {
+export function txSize(transaction: TransactionSkeletonType) {
     const serializedTx = blockchain.Transaction.pack(createTransactionFromSkeleton(transaction));
     // 4 is serialized offset bytesize;
-    const size = serializedTx.byteLength + 4;
+    return serializedTx.byteLength + 4;
+}
 
+export function calculateFee(size: number, feeRate: BIish): BI {
     const ratio = BI.from(1000);
     const base = BI.from(size).mul(feeRate);
     const fee = base.div(ratio);

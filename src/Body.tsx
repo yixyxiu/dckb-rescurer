@@ -51,6 +51,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
         cell: Cell,
     }[];
     const tipHeader = useRPC<Header>(mutator, "getTipHeader");
+    const feeRate = useFeeRate(mutator);
     for (const i of Array.from({ length: 1000 }).keys()) {
         const [h1, h2] = (
             i < daos.length ? [
@@ -63,7 +64,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
             rpcCalls => useSWRImmutable<Header>(rpcCalls).data
         );
 
-        if (!h1 || !h2 || !tipHeader) {
+        if (!h1 || !h2 || !tipHeader || !feeRate) {
             continue;
         }
 
@@ -80,7 +81,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
             };
 
             const inputs = [deposit, receipt, ...sudts]
-            const builder = new TransactionBuilder(accountLock, signer, [h1])
+            const builder = new TransactionBuilder(accountLock, signer, [h1], feeRate)
                 .add("input", "end", ...inputs)
                 .add("output", "end", withdrawal);
 
@@ -92,10 +93,8 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 dispatchDeadCells({ type: "add", cells: inputs });
                 try {
                     await builder.buildAndSend();
-                    //Show successful message to user!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     mutator();
                 } catch (err) {
-                    //Show error to user!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     console.log(err);
                     dispatchDeadCells({ type: "remove", cells: inputs });
                 }
@@ -113,7 +112,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
         } else {// Handle withdrawal action
             const withdrawalRequest = daos[i];
             const inputs = [withdrawalRequest]
-            const builder = new TransactionBuilder(accountLock, signer, [h1, h2])
+            const builder = new TransactionBuilder(accountLock, signer, [h1, h2], feeRate)
                 .add("input", "end", ...inputs);
 
             const since = parseEpoch(calculateDaoEarliestSinceCompatible(h2.epoch, h1.epoch))
@@ -122,10 +121,8 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 dispatchDeadCells({ type: "add", cells: inputs });
                 try {
                     await builder.buildAndSend();
-                    //Show successful message to user!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     mutator();
                 } catch (err) {
-                    //Show error to user!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     console.log(err);
                     dispatchDeadCells({ type: "remove", cells: inputs });
                 }
@@ -148,7 +145,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
     const totalWithdrawableValue = sum(actionInfos.filter(i => i.type === "withdrawal").map(i => i.value));
 
     try {
-        if (!tipHeader) {
+        if (!tipHeader || !feeRate) {
             return (
                 <>
                     <h1>dCKB Rescuer</h1>
@@ -182,7 +179,6 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                     <li>{withdrawalRequests.length > 0 ? `${withdrawalRequests.length} Pending Withdrawal${withdrawalRequests.length > 1 ? "s" : ""} with ${display(totalWithdrawableValue)} CKB locked` : "No Pending Withdrawals found"}</li>
                 </ul >
                 <h2>dCKB Actions</h2>
-                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <progress /> : null}
                 {actionInfos.length > 0 ?
                     <ul>
                         {actionInfos.map(
@@ -199,12 +195,36 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                     :
                     <p>No actions available, nothing to do here! 😎</p>
                 }
-
+                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <progress /> : null}
             </>
         );
     } finally {
         processRPCRequests();
     }
+}
+
+function useFeeRate(mutator: () => void) {
+    type FeeRateStatistics = { mean: Hexadecimal, median: Hexadecimal };
+    const feeRateStatistics6 = useRPC<FeeRateStatistics | null>(mutator, "getFeeRateStatistics", "0x6");
+    const feeRateStatistics101 = useRPC<FeeRateStatistics | null>(mutator, "getFeeRateStatistics", "0x101");
+    if (feeRateStatistics6 === undefined || feeRateStatistics101 === undefined) {
+        return undefined;
+    }
+
+    const median101 = feeRateStatistics101 === null ? BI.from(1000) : BI.from(feeRateStatistics101.median);
+    const median6 = feeRateStatistics6 === null ? median101 : BI.from(feeRateStatistics6.median);
+
+    let res = median6.add(median6.div(10));
+
+    const lowerLimit = median101.add(median101.div(10));
+    const upperLimit = BI.from(10 ** 7)
+
+    if (res.lt(lowerLimit)) {
+        res = lowerLimit;
+    } else if (res.gt(upperLimit)) {
+        res = upperLimit;
+    }
+    return res;
 }
 
 function reducer(state: ImmutableSet<Cell>, action: { type: "add" | "remove", cells: Cell[] }) {

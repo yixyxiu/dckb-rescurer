@@ -30,7 +30,7 @@ export function useCollector(mutatorAccumulator: (_: any) => void, query: CKBInd
 }
 
 export function useRPC<T>(mutatorAccumulator: (_: any) => void, ...params: string[]) {
-    const { data, isLoading, error, mutate } = useSWR(["rpc", ...params].join("/"), fetcher);
+    const { data, isLoading, error, mutate } = useSWR(["rpc", ...params].join("/"), fetcher, { refreshInterval: 20000 });
 
     if (isLoading || error) {
         return undefined;

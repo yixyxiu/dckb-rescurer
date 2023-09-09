@@ -6,7 +6,7 @@ import { Cell, Header, Hexadecimal, Script, Transaction, WitnessArgs, blockchain
 import { calculateDaoEarliestSinceCompatible, calculateMaximumWithdrawCompatible } from "@ckb-lumos/common-scripts/lib/dao";
 import { Uint128LE, Uint64LE } from "@ckb-lumos/codec/lib/number/uint";
 import { hexify } from "@ckb-lumos/codec/lib/bytes";
-import { calculateFee, defaultCellDeps, defaultScript, getRPC, scriptEq } from "./utils";
+import { calculateFee, defaultCellDeps, defaultScript, getRPC, scriptEq, txSize } from "./utils";
 
 type signerType = (tx: TransactionSkeletonType, accountLock: Script) => Promise<Transaction>;
 
@@ -16,6 +16,8 @@ export class TransactionBuilder {
 
     #blockNumber2Header: Map<Hexadecimal, Header>;
 
+    #feeRate: BI
+
     #inputs: Cell[];
     #outputs: Cell[];
 
@@ -23,11 +25,14 @@ export class TransactionBuilder {
         accountLock: Script,
         signer: signerType,
         headers: Header[],
+        feeRate: BI,
     ) {
         this.#accountLock = accountLock;
         this.#signer = signer;
 
         this.#blockNumber2Header = new Map(headers.map(h => [h.number, h]));
+
+        this.#feeRate = feeRate;
 
         this.#inputs = [];
         this.#outputs = [];
@@ -56,10 +61,10 @@ export class TransactionBuilder {
         return this;
     }
 
-    async buildAndSend(feeRate: BI = BI.from(1000)) {
+    async buildAndSend() {
         const ckbDelta = await this.getCkbDelta();
 
-        const fee = calculateFee(await this.#buildWithChange(ckbDelta), feeRate);
+        const fee = calculateFee(txSize(await this.#buildWithChange(ckbDelta)), this.#feeRate);
 
         const transaction = await this.#buildWithChange(ckbDelta.sub(fee));
 
@@ -341,7 +346,7 @@ async function sendTransaction(signedTransaction: Transaction, rpc: RPC) {
     const txHash = await rpc.sendTransaction(signedTransaction);
 
     //Wait until the transaction is committed
-    for (let i = 0; i < 120; i++) {
+    while (true) {
         let transactionData = await rpc.getTransaction(txHash);
         switch (transactionData.txStatus.status) {
             case "committed":
@@ -354,6 +359,4 @@ async function sendTransaction(signedTransaction: Transaction, rpc: RPC) {
                 throw new Error("Unexpected transaction state: " + transactionData.txStatus.status);
         }
     }
-
-    throw new Error("Transaction timed out.");
 }
