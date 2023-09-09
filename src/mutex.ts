@@ -1,5 +1,6 @@
-// Modified from :
-// https://spin.atomicobject.com/2018/09/10/javascript-concurrency/
+/* Hacked together based on:
+ * https://spin.atomicobject.com/2018/09/10/javascript-concurrency/
+ */
 
 
 export class Mutex<D> {

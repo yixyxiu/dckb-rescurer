@@ -20,7 +20,7 @@ export function App() {
         <>
             <h1>dCKB Rescuer</h1>
             <p>You want to retrieve your dCKB funds, make Metamask understand that!! 💪</p>
-            <button onClick={mutate} disabled={error ? true : false}>
+            <button className="fit" onClick={mutate} disabled={error ? true : false}>
                 Connect MetaMask to dCKB Rescuer
             </button>
         </>

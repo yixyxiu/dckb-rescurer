@@ -144,7 +144,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                     </ul>
                     <h2>Loading dCKB Actions...</h2>
                     <p>Downloading the latest dCKB data, just for you. Hang tight...</p>
-                    <progress />
+                    <p><div className="spinner spin"></div></p>
                 </>
             );
         }
@@ -168,22 +168,20 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 </ul >
                 <h2>dCKB Actions</h2>
                 {actionInfos.length > 0 ?
-                    <ul>
+                    <div>
                         {actionInfos.map(
                             ({ type, value, since, action, disabled, cell }) =>
-                                <li key={cell.outPoint!.txHash}>
-                                    <button onClick={action} disabled={disabled}>
-                                        {type === "request" ?
-                                            `Burn ${display(BI.from(cell.cellOutput.capacity))} dCKB to unlock a ${display(value)} CKB Deposit` :
-                                            `Complete Withdrawal of ${display(value)} CKB Deposit`}
-                                    </button>
-                                </li>
+                                <button key={cell.outPoint!.txHash} className="fit" onClick={action} disabled={disabled}>
+                                    {type === "request" ?
+                                        `Burn ${display(BI.from(cell.cellOutput.capacity))} dCKB to unlock a ${display(value)} CKB Deposit` :
+                                        `Complete Withdrawal of ${display(value)} CKB Deposit`}
+                                </button>
                         )}
-                    </ul>
+                    </div>
                     :
                     <p>No actions available, nothing to do here! 😎</p>
                 }
-                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <progress /> : null}
+                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <p><div className="spinner spin"></div></p> : null}
             </>
         );
     } finally {
