@@ -11,14 +11,14 @@ export function App() {
 
     if (!ethereum) return (
         <>
-            <h1>dCKB Rescuer</h1>
+            <h1>🏥 dCKB Rescuer</h1>
             <p>MetaMask doesn't seem to be installed</p>
         </>
     );
 
     if (isLoading || error || ethereumAddress === undefined) return (
         <>
-            <h1>dCKB Rescuer</h1>
+            <h1>🏥 dCKB Rescuer</h1>
             <p>You want to retrieve your dCKB funds, make Metamask understand that!! 💪</p>
             <button className="fit" onClick={mutate} disabled={error ? true : false}>
                 Connect MetaMask to dCKB Rescuer

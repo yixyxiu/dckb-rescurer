@@ -42,14 +42,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
 
     const daos = [...deposits, ...withdrawalRequests];
 
-    const actionInfos = [] as {
-        type: "request" | "withdrawal";
-        value: BI;
-        since: Epoch;
-        action: () => Promise<void>;
-        disabled: boolean;
-        cell: Cell,
-    }[];
+    const actionInfos: ActionInfo[] = [];
     const tipHeader = useRPC<Header>(mutator, "getTipHeader");
     const feeRate = useFeeRate(mutator);
     for (const i of Array.from({ length: 1000 }).keys()) {
@@ -127,65 +120,127 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
         }
     }
 
-    actionInfos.sort((a, b) => epochCompare(a.since, b.since));
-
     const totalDepositedValue = sum(actionInfos.filter(i => i.type === "request").map(i => i.value));
     const totalWithdrawableValue = sum(actionInfos.filter(i => i.type === "withdrawal").map(i => i.value));
+    const totalMissingSudtsValue = sum(deposits.map(c => c.cellOutput.capacity)).sub(totalSudtsValue);
 
     try {
         if (!tipHeader || !feeRate) {
             return (
                 <>
-                    <h1>dCKB Rescuer</h1>
+                    <h1>🏥 dCKB Rescuer</h1>
                     <h2>Account information</h2>
                     <ul>
                         <li>Ethereum Address: <a href={`https://etherscan.io/address/${ethereumAddress}`}>{ethereumAddress}</a></li>
                         <li>Nervos Address(PW): <a href={`https://explorer.nervos.org/address/${address}`}>{midElide(address, ethereumAddress.length)}</a></li>
                     </ul>
+                    <p><div className="spinner spin"></div></p>
                     <h2>Loading dCKB Actions...</h2>
                     <p>Downloading the latest dCKB data, just for you. Hang tight...</p>
-                    <p><div className="spinner spin"></div></p>
                 </>
             );
         }
 
+        const { ready, oneDay, threeDays, oneWeek, twoWeeks, oneMonth } = bucketInfos(actionInfos, parseEpoch(tipHeader.epoch));
+
         return (
             <>
-                <h1>dCKB Rescuer</h1>
+                <h1>🏥 dCKB Rescuer</h1>
                 <h2>Account information</h2>
                 <ul>
                     <li>Ethereum Address: <a href={`https://etherscan.io/address/${ethereumAddress}`}>{ethereumAddress}</a></li>
                     <li>Nervos Address(PW): <a href={`https://explorer.nervos.org/address/${address}`}>{midElide(address, ethereumAddress.length)}</a></li>
                     <li>Available Balance: {display(totalCapacitiesValue)} CKB & {display(totalSudtsValue)} dCKB</li>
+                    <li>{withdrawalRequests.length > 0 ? `${withdrawalRequests.length} Pending Withdrawal${withdrawalRequests.length > 1 ? "s" : ""} with ${display(totalWithdrawableValue)} CKB locked` : "No Pending Withdrawals found"}</li>
                     {deposits.length > 0 ?
                         <>
                             <li>{deposits.length} Deposit{deposits.length > 1 ? "s" : ""} with {display(totalDepositedValue)} CKB locked</li>
-                            <li>Amount required to unlock all deposits: {display(sum(deposits.map(c => c.cellOutput.capacity)))} dCKB</li>
+                            {totalMissingSudtsValue.gt(0) ? <li> Missing {fullDisplay(totalMissingSudtsValue)} dCKB for unlocking all deposits ⚠️</li> : null}
                         </>
                         : <li>No Deposits found</li>
                     }
-                    <li>{withdrawalRequests.length > 0 ? `${withdrawalRequests.length} Pending Withdrawal${withdrawalRequests.length > 1 ? "s" : ""} with ${display(totalWithdrawableValue)} CKB locked` : "No Pending Withdrawals found"}</li>
                 </ul >
-                <h2>dCKB Actions</h2>
-                {actionInfos.length > 0 ?
-                    <div>
-                        {actionInfos.map(
-                            ({ type, value, since, action, disabled, cell }) =>
-                                <button key={cell.outPoint!.txHash} className="fit" onClick={action} disabled={disabled}>
-                                    {type === "request" ?
-                                        `Burn ${display(BI.from(cell.cellOutput.capacity))} dCKB to unlock a ${display(value)} CKB Deposit` :
-                                        `Complete Withdrawal of ${display(value)} CKB Deposit`}
-                                </button>
-                        )}
-                    </div>
-                    :
-                    <p>No actions available, nothing to do here! 😎</p>
-                }
                 {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <p><div className="spinner spin"></div></p> : null}
+                <h2>dCKB Actions</h2>
+                {
+                    actionInfos.length > 0 ?
+                        <>
+                            {ready.length > 0 ? <div>{ready.map(info2action)}</div> : null}
+                            {oneDay.length > 0 ? <>
+                                <h3>Withdraw within One Day 🔥🔥🔥</h3>
+                                <div>{oneDay.map(info2action)}</div>
+                            </> : null}
+                            {threeDays.length > 0 ? <>
+                                <h3>Withdraw within Three Days 🔥🔥</h3>
+                                <div>{threeDays.map(info2action)}</div>
+                            </> : null}
+                            {oneWeek.length > 0 ? <>
+                                <h3>Withdraw within One Week 🔥</h3>
+                                <div>{oneWeek.map(info2action)}</div>
+                            </> : null}
+                            {twoWeeks.length > 0 ? <>
+                                <h3>Withdraw within Two Weeks</h3>
+                                <div>{twoWeeks.map(info2action)}</div>
+                            </> : null}
+                            {oneMonth.length > 0 ? <>
+                                <h3>Withdraw within One Month</h3>
+                                <div>{oneMonth.map(info2action)}</div>
+                            </> : null}
+                        </>
+
+                        :
+                        <p>No actions available, nothing to do here! 😎</p>
+                }
             </>
         );
     } finally {
         processRPCRequests();
+    }
+}
+
+type ActionInfo = {
+    type: "request" | "withdrawal";
+    value: BI;
+    since: Epoch;
+    action: () => Promise<void>;
+    disabled: boolean;
+    cell: Cell,
+}
+
+function info2action(info: ActionInfo) {
+    return (
+        <button key={info.cell.outPoint!.txHash} className="fit" onClick={info.action} disabled={info.disabled}>
+            {info.type === "request" ?
+                `Burn ${display(BI.from(info.cell.cellOutput.capacity))} dCKB to unlock a ${display(info.value)} CKB Deposit` :
+                `Complete the Withdrawal of a ${display(info.value)} CKB Deposit`}
+        </button>
+    )
+}
+
+function bucketInfos(infos: ActionInfo[], tipEpoch: Epoch) {
+    infos.sort((a, b) => epochCompare(a.since, b.since));
+
+    let i = 0;
+    const bucketer = (epoch: Epoch) => {
+        const infoBucket: ActionInfo[] = [];
+        while (i < infos.length) {
+            const info = infos[i];
+            if (epochCompare(info.since, epoch) === 1) {
+                return infoBucket;
+            }
+            infoBucket.push(info);
+            i += 1;
+        }
+        return infoBucket;
+    }
+
+    return {
+        ready: bucketer(tipEpoch),
+        oneDay: bucketer({ ...tipEpoch, number: tipEpoch.number.add(6) }),
+        threeDays: bucketer({ ...tipEpoch, number: tipEpoch.number.add(18) }),
+        oneWeek: bucketer({ ...tipEpoch, number: tipEpoch.number.add(42) }),
+        twoWeeks: bucketer({ ...tipEpoch, number: tipEpoch.number.add(84) }),
+        oneMonth: bucketer({ ...tipEpoch, number: tipEpoch.number.add(186) }),
     }
 }
 
@@ -294,6 +349,15 @@ function midElide(s: string, maxLen: number) {
 
 function display(ckbQuantity: BI) {
     return ckbQuantity.div(10 ** 8).toString();
+}
+
+function fullDisplay(ckbQuantity: BI) {
+    let s = ckbQuantity.toString();
+    s = s.padStart(9, "0");
+    s = s.slice(0, -8) + "." + s.slice(-8);
+    s = s.replace(/0+$/, '');
+    s = s.replace(/\.$/, '');
+    return s;
 }
 
 function sum(nn: BIish[]) {
