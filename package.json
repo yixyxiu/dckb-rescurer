@@ -4,7 +4,7 @@
   "description": "",
   "scripts": {
     "start": "parcel",
-    "build": "parcel build"
+    "build": "parcel build src/index.html --public-url replacethislinewithadot && sed -i.bak 's/replacethislinewithadot/./g' dist/index.html"
   },
   "source": "src/index.html",
   "keywords": [],

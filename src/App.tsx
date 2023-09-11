@@ -12,7 +12,7 @@ export function App() {
     if (!ethereum) return (
         <>
             <h1>🏥 dCKB Rescuer</h1>
-            <p>MetaMask doesn't seem to be installed</p>
+            <p>MetaMask doesn't seem to be installed ⚠️</p>
         </>
     );
 
