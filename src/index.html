@@ -3,7 +3,9 @@
 
 <head>
     <meta charset="utf-8" />
-    <title>🏥 dCKB Rescuer</title>
+    <title>dCKB Rescuer</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏥</text></svg>">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
     <meta property="og:title" content="dCKB Rescuer">
@@ -13,14 +15,16 @@
 
 <body>
     <div id="app"></div>
+    <script type="module" src="index.tsx"></script>
 
-    <div id="app-placeholder">
+    <div id="dummy">
         <h1>🏥 dCKB Rescuer</h1>
         <p>You want to retrieve your dCKB funds, make Metamask understand that!! 💪</p>
-        <button class="fit" disabled>
+        <button id="dummy-btn" class="fit"
+            onclick="document.getElementById('dummy-btn').setAttribute('disabled', '');document.getElementById('dummy-prg').removeAttribute('hidden')">
             Connect MetaMask to dCKB Rescuer
         </button>
-        <p>
+        <p id="dummy-prg" hidden="true">
             <progress class="fit" style="accent-color: #f56a6a;"></progress>
         </p>
     </div>
@@ -77,8 +81,6 @@
             }
         }
     </style>
-
-    <script type="module" src="index.tsx"></script>
 </body>
 
 </html>
