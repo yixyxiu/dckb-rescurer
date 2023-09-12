@@ -15,19 +15,18 @@
 
 <body>
     <div id="app"></div>
-    <script type="module" src="index.tsx"></script>
-
     <div id="dummy">
         <h1>🏥 dCKB Rescuer</h1>
         <p>You want to retrieve your dCKB funds, make Metamask understand that!! 💪</p>
         <button id="dummy-btn" class="fit"
-            onclick="document.getElementById('dummy-btn').setAttribute('disabled', '');document.getElementById('dummy-prg').removeAttribute('hidden')">
+            onclick="document.getElementById('dummy-btn').setAttribute('disabled', '');document.getElementById('dummy-prg').removeAttribute('hidden');">
             Connect MetaMask to dCKB Rescuer
         </button>
         <p id="dummy-prg" hidden="true">
             <progress class="fit" style="accent-color: #f56a6a;"></progress>
         </p>
     </div>
+    <script type="module" src="index.tsx"></script>
 
     <style>
         @import "../node_modules/minimal-stylesheet/minimal.css";

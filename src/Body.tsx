@@ -134,7 +134,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                         <li>Ethereum Address: <a href={`https://etherscan.io/address/${ethereumAddress}`}>{ethereumAddress}</a></li>
                         <li>Nervos Address(PW): <a href={`https://explorer.nervos.org/address/${address}`}>{midElide(address, ethereumAddress.length)}</a></li>
                     </ul>
-                    <p><div className="spinner spin"></div></p>
+                    <div><div className="spinner spin"></div></div>
                     <h2>Loading dCKB Actions...</h2>
                     <p>Downloading the latest dCKB data, just for you. Hang tight...</p>
                 </>
@@ -160,7 +160,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                         : <li>No Deposits found</li>
                     }
                 </ul >
-                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <p><div className="spinner spin"></div></p> : null}
+                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <div><div className="spinner spin"></div></div> : null}
                 <h2>dCKB Actions</h2>
                 {
                     actionInfos.length > 0 ?
