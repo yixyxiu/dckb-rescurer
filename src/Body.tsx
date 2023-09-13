@@ -38,7 +38,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
     ];
     const deposits = receipts.map(receipt2Deposit);
 
-    const withdrawalRequests = useCollector(mutator, { type: defaultScript("DAO"), lock: accountLock });
+    const withdrawalRequests = useCollector(mutator, { type: defaultScript("DAO"), lock: accountLock }, (c) => c.data !== "0x0000000000000000");
 
     const daos = [...deposits, ...withdrawalRequests];
 

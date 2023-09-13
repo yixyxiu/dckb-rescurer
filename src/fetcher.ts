@@ -17,7 +17,7 @@ export function mutatorAccumulator() {
     }
 }
 
-export function useCollector(mutatorAccumulator: (_: any) => void, query: CKBIndexerQueryOptions) {
+export function useCollector(mutatorAccumulator: (_: any) => void, query: CKBIndexerQueryOptions, filter?: (c: Cell) => boolean) {
     const { data, isLoading, error, mutate } = useSWR(["collector", JSON.stringify(query)].join("/"), fetcher);
 
     if (isLoading || error || !Array.isArray(data)) {
@@ -26,7 +26,11 @@ export function useCollector(mutatorAccumulator: (_: any) => void, query: CKBInd
 
     mutatorAccumulator(mutate);
 
-    return data as Cell[];
+    if (filter === undefined) {
+        return data as Cell[];
+    }
+
+    return (data as Cell[]).filter(filter);
 }
 
 export function useRPC<T>(mutatorAccumulator: (_: any) => void, ...params: string[]) {
