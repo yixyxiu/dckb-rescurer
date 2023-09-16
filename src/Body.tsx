@@ -66,10 +66,16 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
         const action = async () => {
             dispatchDeadCells({ type: "add", cells: inputs });
             try {
-                await builder.buildAndSend();
+                const { txHash } = await builder.buildAndSend();
+                window.open('https://explorer.nervos.org/transaction/' + txHash, '_blank');
                 mutator();
-            } catch (err) {
-                console.log(err);
+            } catch (err: any) {
+                if (err.code !== 4001) {
+                    window.alert("Something unexpected happened with the dCKB action you chose:\n\n\n"
+                        + err.message
+                        + "\n\n\nPlease, report this message in the dedicated dCKB Rescue channel:\n\n"
+                        + "https://discord.com/channels/657799690070523914/1138101195165155379");
+                }
                 dispatchDeadCells({ type: "remove", cells: inputs });
             }
         };
@@ -134,7 +140,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                         <li>Ethereum Address: <a href={`https://etherscan.io/address/${ethereumAddress}`}>{ethereumAddress}</a></li>
                         <li>Nervos Address(PW): <a href={`https://explorer.nervos.org/address/${address}`}>{midElide(address, ethereumAddress.length)}</a></li>
                     </ul>
-                    <div><div className="spinner spin"></div></div>
+                    <div><progress className="fit"></progress></div>
                     <h2>Loading dCKB Actions...</h2>
                     <p>Downloading the latest dCKB data, just for you. Hang tight...</p>
                 </>
@@ -150,40 +156,40 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
                 <ul>
                     <li>Ethereum Address: <a href={`https://etherscan.io/address/${ethereumAddress}`}>{ethereumAddress}</a></li>
                     <li>Nervos Address(PW): <a href={`https://explorer.nervos.org/address/${address}`}>{midElide(address, ethereumAddress.length)}</a></li>
-                    <li>Available Balance: {display(totalCapacitiesValue)} CKB & {display(totalSudtsValue)} dCKB</li>
-                    <li>{withdrawalRequests.length > 0 ? `${withdrawalRequests.length} Pending Withdrawal${withdrawalRequests.length > 1 ? "s" : ""} with ${display(totalWithdrawableValue)} CKB locked` : "No Pending Withdrawals found"}</li>
+                    <li>Available Balance: <strong>{display(totalCapacitiesValue)} CKB</strong> & <strong>{display(totalSudtsValue)} dCKB</strong></li>
+                    <li>{withdrawalRequests.length > 0 ? <>{withdrawalRequests.length} Pending Withdrawal{withdrawalRequests.length > 1 ? "s" : ""} with <strong>{display(totalWithdrawableValue)} CKB</strong> locked </> : <>No Pending Withdrawals found</>}</li>
                     {deposits.length > 0 ?
                         <>
-                            <li>{deposits.length} Deposit{deposits.length > 1 ? "s" : ""} with {display(totalDepositedValue)} CKB locked</li>
-                            {totalMissingSudtsValue.gt(0) ? <li> Missing {fullDisplay(totalMissingSudtsValue)} dCKB for unlocking all deposits ⚠️</li> : null}
+                            <li>{deposits.length} Deposit{deposits.length > 1 ? "s" : ""} with <strong>{display(totalDepositedValue)} CKB</strong> locked</li>
+                            {totalMissingSudtsValue.gt(0) ? <li> Missing <strong>{fullDisplay(totalMissingSudtsValue)} dCKB</strong> for unlocking all deposits ⚠️</li> : null}
                         </>
                         : <li>No Deposits found</li>
                     }
                 </ul >
-                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <div><div className="spinner spin"></div></div> : null}
+                {deadCells.hasAny(...capacities, ...sudts, ...daos, ...receipts) ? <div><progress className="fit"></progress></div> : null}
                 <h2>dCKB Actions</h2>
                 {
                     actionInfos.length > 0 ?
                         <>
                             {ready.length > 0 ? <div>{ready.map(info2action)}</div> : null}
                             {oneDay.length > 0 ? <>
-                                <h3>Withdraw within One Day 🔥🔥🔥</h3>
+                                <h3>Withdraw within <strong>One Day</strong> 🔥🔥🔥</h3>
                                 <div>{oneDay.map(info2action)}</div>
                             </> : null}
                             {threeDays.length > 0 ? <>
-                                <h3>Withdraw within Three Days 🔥🔥</h3>
+                                <h3>Withdraw within <strong>Three Days</strong> 🔥🔥</h3>
                                 <div>{threeDays.map(info2action)}</div>
                             </> : null}
                             {oneWeek.length > 0 ? <>
-                                <h3>Withdraw within One Week 🔥</h3>
+                                <h3>Withdraw within <strong>One Week</strong> 🔥</h3>
                                 <div>{oneWeek.map(info2action)}</div>
                             </> : null}
                             {twoWeeks.length > 0 ? <>
-                                <h3>Withdraw within Two Weeks</h3>
+                                <h3>Withdraw within <strong>Two Weeks</strong></h3>
                                 <div>{twoWeeks.map(info2action)}</div>
                             </> : null}
                             {oneMonth.length > 0 ? <>
-                                <h3>Withdraw within One Month</h3>
+                                <h3>Withdraw within <strong>One Month</strong></h3>
                                 <div>{oneMonth.map(info2action)}</div>
                             </> : null}
                         </>
