@@ -22,7 +22,7 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
 
     const [deadCells, dispatchDeadCells] = useReducer(reducer, new ImmutableSet<Cell>(c => `${c.outPoint!.txHash}-${c.outPoint!.index}`));
 
-    const capacities = useCollector(mutator, { type: "empty", lock: accountLock, withData: true });
+    const capacities = useCollector(mutator, { type: "empty", lock: accountLock }, (c) => c.data === "0x");
 
     const sudts = useCollector(mutator, { type: defaultScript("SUDT"), lock: accountLock });
 
