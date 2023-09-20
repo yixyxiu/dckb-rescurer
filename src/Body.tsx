@@ -67,10 +67,12 @@ export function Body(props: { ethereumAddress: Hexadecimal }) {
             dispatchDeadCells({ type: "add", cells: inputs });
             try {
                 const { txHash } = await builder.buildAndSend();
+                console.log("Transaction committed with txhash: " + txHash);
                 window.open('https://explorer.nervos.org/transaction/' + txHash, '_blank');
                 mutator();
             } catch (err: any) {
                 if (err.code !== 4001) {
+                    console.log("Something unexpected happened with the transaction: ", err.message);
                     window.alert("Something unexpected happened with the dCKB action you chose:\n\n\n"
                         + err.message
                         + "\n\n\nPlease, report this message in the dedicated dCKB Rescue channel:\n\n"

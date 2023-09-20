@@ -68,7 +68,13 @@ export class TransactionBuilder {
 
         const transaction = await this.#buildWithChange(ckbDelta.sub(fee));
 
+        console.log("Transaction Skeleton:");
+        console.log(JSON.stringify(transaction, null, 2));
+
         const signedTransaction = await this.#signer(transaction, this.#accountLock);
+
+        console.log("Signed Transaction:");
+        console.log(JSON.stringify(signedTransaction, null, 2));
 
         const txHash = await sendTransaction(signedTransaction, getRPC());
 
@@ -345,8 +351,8 @@ async function sendTransaction(signedTransaction: Transaction, rpc: RPC) {
     //Send the transaction
     const txHash = await rpc.sendTransaction(signedTransaction);
 
-    //Wait until the transaction is committed
-    while (true) {
+    //Wait until the transaction is committed or time out after ten minutes
+    for (let i = 0; i < 600; i++) {
         let transactionData = await rpc.getTransaction(txHash);
         switch (transactionData.txStatus.status) {
             case "committed":
@@ -359,4 +365,6 @@ async function sendTransaction(signedTransaction: Transaction, rpc: RPC) {
                 throw new Error("Unexpected transaction state: " + transactionData.txStatus.status);
         }
     }
+
+    throw new Error("Transaction timed out, 10 minutes elapsed from submission.");
 }
