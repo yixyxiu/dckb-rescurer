@@ -42,7 +42,7 @@ export async function signer(transaction: TransactionSkeletonType, accountLock: 
     signedMessage = "0x" + signedMessage.slice(2, -2) + v.toString(16).padStart(2, "0");
 
     const index = transaction.inputs.findIndex((c) => scriptEq(c.cellOutput.lock, accountLock));
-    const unpackedWitness = blockchain.WitnessArgs.unpack(transaction.witnesses.get(0)!)
+    const unpackedWitness = blockchain.WitnessArgs.unpack(transaction.witnesses.get(index)!)
     const packedWitness = bytes.hexify(
         blockchain.WitnessArgs.pack({
             ...unpackedWitness,
