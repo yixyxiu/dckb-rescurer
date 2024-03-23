@@ -20,7 +20,7 @@
     "@ckb-lumos/hd": "^0.20.0",
     "@ckb-lumos/helpers": "^0.20.0",
     "@ckb-lumos/rpc": "^0.20.0",
-    "@parcel/watcher-darwin-arm64": "^2.4.1",
+    /*"@parcel/watcher-darwin-arm64": "^2.4.1",*/
     "keccak": "^3.0.3",
     "lightningcss": "^1.24.1",
     "minimal-stylesheet": "^0.1.1",
