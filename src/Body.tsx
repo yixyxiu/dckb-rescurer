@@ -15,6 +15,11 @@ import { signer } from "./pw_lock_signer";
 
 export function Body(props: { ethereumAddress: Hexadecimal }) {
     const { ethereumAddress } = props;
+
+    if (!ethereumAddress || ethereumAddress === '') {
+        return <></>;
+    }
+
     const accountLock = { ...defaultScript("PW_LOCK"), args: ethereumAddress };
     const address = encodeToAddress(accountLock);
 
